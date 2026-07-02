@@ -4,13 +4,11 @@ from jose import JWTError, jwt
 
 from config import config
 
-jwt_config = config["JWT"]
-
-SECRET_KEY = jwt_config["SECRET_KEY"]
-ALGORITHM = jwt_config["ALGORITHM"]
-ACCESS_TOKEN_EXPIRE_MINUTES = jwt_config["ACCESS_TOKEN_EXPIRE_MINUTES"]
-REFRESH_TOKEN_EXPIRE_MINUTES = jwt_config["REFRESH_TOKEN_EXPIRE_MINUTES"]
-ISSUER = jwt_config["ISSUER"]
+SECRET_KEY = config.jwt.secret_key
+ALGORITHM = config.jwt.algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = config.jwt.access_token_expire_minutes
+REFRESH_TOKEN_EXPIRE_DAYS = config.jwt.refresh_token_expire_days
+ISSUER = config.jwt.issuer
 
 
 # ------------------------------------------------------------------
@@ -43,7 +41,7 @@ def create_refresh_token(user_id: int) -> str:
         "user_id": user_id,
         "token_type": "refresh",
     }
-    return _create_token(payload, timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES))
+    return _create_token(payload, timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
 
 
 # ------------------------------------------------------------------

@@ -26,7 +26,7 @@ class RegisterRequest(BaseModel):
     name: str
     email: EmailStr
     password: str
-    is_organization: bool
+    is_organization_admin: bool = False
 
 
 class RegisterResponse(BaseModel):

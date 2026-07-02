@@ -21,7 +21,7 @@ class UserSession(Base):
     __tablename__ = "user_sessions"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     refresh_token = Column(String, nullable=False)
     login_at = Column(DateTime, default=func.now())
     logout_at = Column(DateTime, nullable=True)

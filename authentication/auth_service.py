@@ -83,8 +83,8 @@ def register(db: Session, register_request: RegisterRequest) -> RegisterResponse
         name=register_request.name,
         email=register_request.email,
         hashed_password=hash_password(register_request.password),
-        role=assign_role(register_request.is_organization),
-        is_first_login=False,
+        role=assign_role(register_request.is_organization_admin),
+        is_first_login=True,
     )
     create_user(db, user)
 
@@ -147,6 +147,12 @@ def create_password(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
+        )
+
+    if not user.is_first_login:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password has already been set.",
         )
 
     update_user_password(db, user, hash_password(request.new_password))
