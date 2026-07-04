@@ -25,6 +25,8 @@ def handle_exceptions(func):
         try:
             return func(*args, **kwargs)
         except HTTPException:
+            import traceback
+            traceback.print_exc()
             raise
         except SQLAlchemyError:
             raise HTTPException(
@@ -32,6 +34,8 @@ def handle_exceptions(func):
                 detail="A database error occurred. Please try again.",
             )
         except Exception:
+            import traceback
+            traceback.print_exc()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="An unexpected error occurred.",

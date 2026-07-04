@@ -1,11 +1,7 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
 
 from database.db_enum import UserRole
 
-
-# ------------------------------------------------------------------
-# Login
-# ------------------------------------------------------------------
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -14,29 +10,42 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"
     role: str
-    is_first_login: bool
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "role": "org_admin"
+            }
+        }
+    )
 
 
-# ------------------------------------------------------------------
-# Register (Organization / Self-Service)
-# ------------------------------------------------------------------
+
+# Register
 class RegisterRequest(BaseModel):
-    name: str
     email: EmailStr
     password: str
-    is_organization_admin: bool = False
+    role: UserRole
 
-
+# Register Response
 class RegisterResponse(BaseModel):
     message: str
     email: EmailStr
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "message": "User registered successfully.",
+                "email": "admin@example.com"
+            }
+        }
+    )
 
-# ------------------------------------------------------------------
+
 # Refresh Token
-# ------------------------------------------------------------------
 class RefreshRequest(BaseModel):
     refresh_token: str
 
@@ -45,10 +54,19 @@ class RefreshResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "token_type": "bearer"
+            }
+        }
+    )
 
-# ------------------------------------------------------------------
+
+
+
 # Logout
-# ------------------------------------------------------------------
 class LogoutRequest(BaseModel):
     refresh_token: str
 
@@ -57,9 +75,7 @@ class LogoutResponse(BaseModel):
     message: str
 
 
-# ------------------------------------------------------------------
 # Create Password (First Login)
-# ------------------------------------------------------------------
 class CreatePasswordRequest(BaseModel):
     new_password: str
     confirm_password: str
@@ -76,11 +92,8 @@ class CreatePasswordResponse(BaseModel):
     message: str
 
 
-# ------------------------------------------------------------------
 # Create User (Admin only)
-# ------------------------------------------------------------------
 class CreateUserRequest(BaseModel):
-    name: str
     email: EmailStr
     password: str
     role: UserRole

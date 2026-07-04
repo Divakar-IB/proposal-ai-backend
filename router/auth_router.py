@@ -5,14 +5,13 @@ from authentication.auth_service import (
     create_password,
     create_user_by_admin,
     login,
-    logout,
     refresh,
     register,
 )
 from authentication.dependency import get_current_user
 from database.database import get_db
 from database.db_enum import UserRole
-from database.schemas import (
+from schemas.auth import (
     CreatePasswordRequest,
     CreatePasswordResponse,
     CreateUserRequest,
@@ -58,12 +57,12 @@ def refresh_token(
     return refresh(db=db, refresh_request=refresh_request)
 
 
-@router.post("/logout", response_model=LogoutResponse)
-def logout_user(
-    logout_request: LogoutRequest,
-    db: Session = Depends(get_db),
-):
-    return logout(db=db, logout_request=logout_request)
+# @router.post("/logout", response_model=LogoutResponse)
+# def logout_user(
+#     logout_request: LogoutRequest,
+#     db: Session = Depends(get_db),
+# ):
+#     return logout(db=db, logout_request=logout_request)
 
 
 @router.post("/create-password", response_model=CreatePasswordResponse)

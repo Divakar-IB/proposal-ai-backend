@@ -9,16 +9,12 @@ from authentication.jwt_handler import (
 )
 from database.crud import (
     create_user,
-    create_user_session,
-    deactivate_user_session,
     get_user_by_email,
     get_user_by_id,
-    get_user_session_by_refresh_token,
-    update_refresh_token,
     update_user_password,
 )
-from database.models import User, UserSession
-from database.schemas import (
+from database.models import User
+from schemas.auth import (
     CreatePasswordRequest,
     CreatePasswordResponse,
     CreateUserRequest,
@@ -51,23 +47,18 @@ def login(db: Session, login_request: LoginRequest) -> LoginResponse:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is inactive. Contact your administrator.",
         )
-
-    session = UserSession(user_id=user.id, refresh_token="")
-    create_user_session(db, session)
-
     access_token = create_access_token(
         user_id=user.id,
         email=user.email,
         role=user.role.value,
     )
     refresh_token = create_refresh_token(user_id=user.id)
-    update_refresh_token(db, session, refresh_token)
 
     return LoginResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         role=user.role.value,
-        is_first_login=user.is_first_login,
+        # is_first_login=user.is_first_login,
     )
 
 
@@ -80,10 +71,9 @@ def register(db: Session, register_request: RegisterRequest) -> RegisterResponse
         )
 
     user = User(
-        name=register_request.name,
         email=register_request.email,
         hashed_password=hash_password(register_request.password),
-        role=assign_role(register_request.is_organization_admin),
+        role=assign_role(register_request.role),
         is_first_login=True,
     )
     create_user(db, user)
@@ -98,13 +88,6 @@ def refresh(db: Session, refresh_request: RefreshRequest) -> RefreshResponse:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
-        )
-
-    session = get_user_session_by_refresh_token(db, refresh_request.refresh_token)
-    if session is None or not session.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session not found or has been revoked",
         )
 
     user = get_user_by_id(db, payload.get("user_id"))
@@ -122,12 +105,12 @@ def refresh(db: Session, refresh_request: RefreshRequest) -> RefreshResponse:
     return RefreshResponse(access_token=new_access_token)
 
 
-@handle_exceptions
-def logout(db: Session, logout_request: LogoutRequest) -> LogoutResponse:
-    session = get_user_session_by_refresh_token(db, logout_request.refresh_token)
-    if session is not None and session.is_active:
-        deactivate_user_session(db, session)
-    return LogoutResponse(message="Logged out successfully")
+# @handle_exceptions
+# def logout(db: Session, logout_request: LogoutRequest) -> LogoutResponse:
+#     session = get_user_session_by_refresh_token(db, logout_request.refresh_token)
+#     if session is not None and session.is_active:
+#         deactivate_user_session(db, session)
+#     return LogoutResponse(message="Logged out successfully")
 
 
 @handle_exceptions
@@ -171,7 +154,6 @@ def create_user_by_admin(
         )
 
     user = User(
-        name=request.name,
         email=request.email,
         hashed_password=hash_password(request.password),
         role=request.role,
