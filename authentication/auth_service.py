@@ -15,8 +15,8 @@ from database.crud import (
 )
 from database.models import User
 from schemas.auth import (
-    CreatePasswordRequest,
-    CreatePasswordResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     CreateUserRequest,
     CreateUserResponse,
     LoginRequest,
@@ -114,16 +114,11 @@ def refresh(db: Session, refresh_request: RefreshRequest) -> RefreshResponse:
 
 
 @handle_exceptions
-def create_password(
+def reset_password(
     db: Session,
-    request: CreatePasswordRequest,
+    request: ResetPasswordRequest,
     current_user: dict,
-) -> CreatePasswordResponse:
-    if request.new_password != request.confirm_password:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Passwords do not match",
-        )
+) -> ResetPasswordResponse:
 
     user = get_user_by_id(db, current_user["user_id"])
     if user is None or not user.is_active:
@@ -132,14 +127,14 @@ def create_password(
             detail="User not found",
         )
 
-    if not user.is_first_login:
+    if not verify_password(request.current_password, user.hashed_password):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password has already been set.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect",
         )
 
     update_user_password(db, user, hash_password(request.new_password))
-    return CreatePasswordResponse(message="Password created successfully. You can now access the application.")
+    return ResetPasswordResponse(message="Password reset successfully.")
 
 
 @handle_exceptions

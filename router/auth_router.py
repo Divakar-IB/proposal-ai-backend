@@ -2,18 +2,18 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from authentication.auth_service import (
-    create_password,
     create_user_by_admin,
     login,
     refresh,
     register,
+    reset_password,
 )
 from authentication.dependency import get_current_user
 from database.database import get_db
 from database.db_enum import UserRole
 from schemas.auth import (
-    CreatePasswordRequest,
-    CreatePasswordResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     CreateUserRequest,
     CreateUserResponse,
     LoginRequest,
@@ -65,15 +65,15 @@ def refresh_token(
 #     return logout(db=db, logout_request=logout_request)
 
 
-@router.post("/create-password", response_model=CreatePasswordResponse)
-def create_user_password(
-    create_password_request: CreatePasswordRequest,
+@router.post("/reset_password", response_model=ResetPasswordResponse)
+def reset_user_password(
+    reset_password_request: ResetPasswordRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    return create_password(
+    return reset_password(
         db=db,
-        request=create_password_request,
+        request=reset_password_request,
         current_user=current_user,
     )
 

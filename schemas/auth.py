@@ -75,10 +75,10 @@ class LogoutResponse(BaseModel):
     message: str
 
 
-# Create Password (First Login)
-class CreatePasswordRequest(BaseModel):
+# Reset Password
+class ResetPasswordRequest(BaseModel):
+    current_password: str
     new_password: str
-    confirm_password: str
 
     @field_validator("new_password")
     @classmethod
@@ -88,7 +88,7 @@ class CreatePasswordRequest(BaseModel):
         return v
 
 
-class CreatePasswordResponse(BaseModel):
+class ResetPasswordResponse(BaseModel):
     message: str
 
 

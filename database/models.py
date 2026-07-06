@@ -57,7 +57,7 @@ class KnowledgeDocument(BasicModel):
     status = Column(SAEnum(IngestionStatus),nullable= False, default=IngestionStatus.PENDING)
     
     category = relationship("Category", back_populates="knowledge_document")
-    uploader = relationship("User", back_populates="knowledge_document" )
+    uploader = relationship("User", back_populates="knowledge_documents")
 
 
 class RequirementDocument(BasicModel):
