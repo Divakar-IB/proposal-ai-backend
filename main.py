@@ -7,6 +7,7 @@ from database.db_enum import UserRole
 from middleware.auth_middleware import setup_middleware
 from router.auth_router import router as auth_router
 from router import category
+from router import documents
 
 # Idempotent: ensures the PG ENUM type exists even if the table was dropped while the type survived.
 SAEnum(UserRole, name="userrole").create(bind=engine, checkfirst=True)
@@ -21,6 +22,7 @@ setup_middleware(app)
 
 app.include_router(auth_router)
 app.include_router(category.router)
+app.include_router(documents.router)
 
 @app.get("/")
 def root():

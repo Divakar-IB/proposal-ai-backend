@@ -1,13 +1,14 @@
 from fastapi import (
-    APIRouter, 
-    HTTPException, 
-    status, 
+    APIRouter,
+    HTTPException,
+    status,
     Depends
 )
 from fastapi.responses import JSONResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database.database import get_db
-from database.models import Category
+from database.models import Category, KnowledgeDocument
 from schemas.category import CategoryRequest
 from constants import KNOWLEDGE_CATEGORIES
 
@@ -74,7 +75,21 @@ async def create_or_update_category(
 async def get_categories(
     db: Session = Depends(get_db)
 ):
-    result =  db.query(Category.id,Category.name,Category.description).filter(Category.is_active.is_(True)).all()
+    result = (
+        db.query(
+            Category.id,
+            Category.name,
+            Category.description,
+            func.count(KnowledgeDocument.id).label("document_count"),
+        )
+        .outerjoin(
+            KnowledgeDocument,
+            (KnowledgeDocument.category_id == Category.id) & KnowledgeDocument.is_active.is_(True),
+        )
+        .filter(Category.is_active.is_(True))
+        .group_by(Category.id)
+        .all()
+    )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,content={
@@ -83,7 +98,7 @@ async def get_categories(
                 "id":res.id,
                 "name":res.name,
                 "description": res.description,
-                "document_count": 2
+                "document_count": res.document_count
                 }
                 for res in result
             ]

@@ -3,7 +3,6 @@ from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
 
 
 DATABASE_URL = "postgresql+psycopg2://postgres:12345@localhost:5432/proposal_ai_dev"
-
 engine = create_engine(
             DATABASE_URL,
             pool_pre_ping=True,
