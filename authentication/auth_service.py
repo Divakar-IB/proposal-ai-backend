@@ -29,7 +29,7 @@ from schemas.auth import (
     RegisterResponse,
 )
 from middleware.auth_middleware import handle_exceptions
-from utilities.helper import assign_role
+from utilities.generic import assign_role
 
 
 @handle_exceptions

@@ -23,7 +23,7 @@ from database.crud import (
 from database.database import get_db
 from database.models import Category, KnowledgeDocument
 from schemas.document import DocumentResponse, DocumentUpdateRequest
-from utilities.file_storage import delete_file, save_upload_file
+from utilities.s3_service import S3Client, S3PathBuilder, S3Service
 
 router = APIRouter(
     prefix="/document",

@@ -27,9 +27,16 @@ class JWTConfig(BaseModel):
     refresh_token_expire_days: int = 7
     issuer: str = "proposal-ai"
 
+class AWSConfig(BaseModel):
+    access_key_id: str
+    secret_access_key: str
+    region: str
+    bucket_name: str
+
 class AppConfig(BaseSettings):
     database: DatabaseConfig
     jwt: JWTConfig
+    aws: AWSConfig
     debug: bool = False
     allowed_origins: List[str] = Field(default_factory=list)
 
