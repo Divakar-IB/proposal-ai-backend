@@ -14,6 +14,8 @@ class DatabaseConfig(BaseModel):
     host: str
     port: int
     db_name: str
+    sslmode: str
+    channel_binding: str
     pool_size: int
     max_overflow: int
     pool_recycle: int
@@ -33,10 +35,19 @@ class AWSConfig(BaseModel):
     region: str
     bucket_name: str
 
+class PineconeConfig(BaseModel):
+    api_key: str
+    index_name: str
+    dimension: int = 1536
+    metric: str = "cosine"
+    cloud: str = "aws"
+    region: str = "us-east-1"
+
 class AppConfig(BaseSettings):
     database: DatabaseConfig
     jwt: JWTConfig
     aws: AWSConfig
+    pinecone: PineconeConfig
     debug: bool = False
     allowed_origins: List[str] = Field(default_factory=list)
 

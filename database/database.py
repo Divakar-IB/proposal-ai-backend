@@ -1,8 +1,17 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
+from config import config
 
-
-DATABASE_URL = "postgresql+psycopg2://postgres:12345@localhost:5432/proposal_ai_dev"
+# DATABASE_URL = "postgresql+psycopg2://postgres:12345@localhost:5432/proposal_ai_dev"
+# DATABASE_URL = f"postgresql+psycopg2://neondb_owner:npg_wdDVx2PSgN9m@ep-morning-glitter-ao1eqs10.c-2.ap-southeast-1.aws.neon.tech/proposal_ai_dev?sslmode=require&channel_binding=require"
+DATABASE_URL = (
+    f"postgresql+psycopg2://"
+    f"{config.database.username}:{config.database.password}"
+    f"@{config.database.host}"
+    f"/{config.database.db_name}"
+    f"?sslmode={config.database.sslmode}"
+    f"&channel_binding={config.database.channel_binding}"
+)
 engine = create_engine(
             DATABASE_URL,
             pool_pre_ping=True,

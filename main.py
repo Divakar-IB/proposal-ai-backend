@@ -4,7 +4,7 @@ from sqlalchemy import Enum as SAEnum
 import database.models  # noqa: F401 — side-effect import: registers models on Base.metadata before create_all
 from database.database import Base, engine
 from database.db_enum import UserRole
-from middleware.auth_middleware import setup_middleware
+from middleware.middleware import setup_middleware
 from router.auth_router import router as auth_router
 from router import category
 from router import documents

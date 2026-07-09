@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from authentication.hash import hash_password, verify_password
+from authentication.dependency import hash_password, verify_password
 from authentication.jwt_handler import (
     create_access_token,
     create_refresh_token,
@@ -28,7 +28,7 @@ from schemas.auth import (
     RegisterRequest,
     RegisterResponse,
 )
-from middleware.auth_middleware import handle_exceptions
+from middleware.middleware import handle_exceptions
 from utilities.generic import assign_role
 
 
@@ -103,14 +103,6 @@ def refresh(db: Session, refresh_request: RefreshRequest) -> RefreshResponse:
         role=user.role.value,
     )
     return RefreshResponse(access_token=new_access_token)
-
-
-# @handle_exceptions
-# def logout(db: Session, logout_request: LogoutRequest) -> LogoutResponse:
-#     session = get_user_session_by_refresh_token(db, logout_request.refresh_token)
-#     if session is not None and session.is_active:
-#         deactivate_user_session(db, session)
-#     return LogoutResponse(message="Logged out successfully")
 
 
 @handle_exceptions

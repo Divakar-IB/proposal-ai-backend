@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 from fastapi import (
@@ -9,7 +10,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from authentication.dependency import get_current_user
@@ -23,7 +24,9 @@ from database.crud import (
 from database.database import get_db
 from database.models import Category, KnowledgeDocument
 from schemas.document import DocumentResponse, DocumentUpdateRequest
-from utilities.s3_service import S3Client, S3PathBuilder, S3Service
+from utilities.s3_service import S3PathBuilder, S3Service
+
+s3_service = S3Service()
 
 router = APIRouter(
     prefix="/document",
@@ -58,17 +61,28 @@ def upload_document(
     if category is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
 
-    stored_path, extension = save_upload_file(file, subdir="knowledge_documents")
+    extension = Path(file.filename or "").suffix.lstrip(".").lower()
+    user_id = current_user["user_id"]
 
     document = KnowledgeDocument(
         title=title,
         file_name=file.filename,
-        file_path=stored_path,
+        file_path="",
         extension=extension,
         category_id=category_id,
-        user_id=current_user["user_id"],
+        user_id=user_id,
     )
     document = create_knowledge_document(db, document)
+
+    s3_key = S3PathBuilder.knowledge_document(
+        user_id=user_id,
+        category_id=category_id,
+        document_id=document.id,
+        filename=file.filename,
+    )
+    s3_service.upload_file(file, s3_key)
+
+    document = update_knowledge_document(db, document, file_path=s3_key)
     return _to_response(document)
 
 
@@ -100,7 +114,9 @@ def download_document(
     document = get_knowledge_document_by_id(db, document_id)
     if document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-    return FileResponse(path=document.file_path, filename=document.file_name)
+
+    url = s3_service.generate_presigned_url(document.file_path)
+    return RedirectResponse(url=url)
 
 
 @router.put("/{document_id}", response_model=DocumentResponse)
@@ -135,4 +151,4 @@ def delete_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     delete_knowledge_document(db, document)
-    delete_file(document.file_path)
+    s3_service.delete_file(document.file_path)

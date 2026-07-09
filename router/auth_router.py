@@ -25,7 +25,7 @@ from schemas.auth import (
     RegisterRequest,
     RegisterResponse,
 )
-from middleware.auth_middleware import require_role
+from authentication.dependency import require_role
 
 router = APIRouter(
     prefix="/auth",
