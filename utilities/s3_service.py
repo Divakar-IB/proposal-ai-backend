@@ -1,3 +1,7 @@
+import os
+import tempfile
+from typing import Optional
+
 import boto3
 from io import BytesIO
 from botocore.exceptions import ClientError
@@ -21,23 +25,31 @@ class S3Client:
 
         return cls._client
 
-
+# print("Bucket:", config.aws.bucket_name)
+# print("Region:", config.aws.region)
+# print("Access Key:", config.aws.access_key_id)
 class S3PathBuilder:
     @staticmethod
     def knowledge_document(
         user_id: int,
         category_id: int,
-        document_id: int,
         filename: str,
+        document_id: Optional[int] = None,
     ) -> str:
+        """
+        document_id is optional: the S3 key must be built *before* the DB
+        row exists (upload has to succeed first), so a fresh uuid is used
+        as the folder segment when no document_id is available yet.
+        """
 
         extension = Path(filename).suffix
+        doc_segment = str(document_id) if document_id is not None else uuid4().hex
 
         return (
             f"input/knowledge/"
             f"{user_id}/"
             f"{category_id}/"
-            f"{document_id}/"
+            f"{doc_segment}/"
             f"{uuid4()}{extension}"
         )
 
@@ -132,6 +144,28 @@ class S3Service:
         )
 
         return response["Body"].read()
+
+    def download_fileobj(self, file_path: str) -> BytesIO:
+        """Downloads into an in-memory buffer, positioned at the start."""
+
+        buffer = BytesIO()
+        self.client.download_fileobj(self.bucket, file_path, buffer)
+        buffer.seek(0)
+
+        return buffer
+
+    def download_to_tempfile(self, file_path: str, suffix: str = "") -> str:
+        """
+        Downloads to a local temp file and returns its path.
+        Callers (e.g. the processing pipeline) own cleanup of the returned path.
+        """
+
+        fd, local_path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+
+        self.client.download_file(self.bucket, file_path, local_path)
+
+        return local_path
 
     # Delete
     def delete_file(self, file_path: str):

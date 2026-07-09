@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -24,8 +25,11 @@ from database.crud import (
 from database.database import get_db
 from database.models import Category, KnowledgeDocument
 from schemas.document import DocumentResponse, DocumentUpdateRequest
+from tasks.document_processing import process_knowledge_document
+from utilities.logger import get_logger
 from utilities.s3_service import S3PathBuilder, S3Service
 
+logger = get_logger(__name__)
 s3_service = S3Service()
 
 router = APIRouter(
@@ -50,44 +54,62 @@ def _to_response(document: KnowledgeDocument) -> DocumentResponse:
 
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-def upload_document(
+async def upload_document(
+    background_tasks: BackgroundTasks,
     title: str = Form(...),
     category_id: int = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    category = db.query(Category).filter(Category.id == category_id, Category.is_active.is_(True)).first()
+    user_id = current_user["user_id"]
+    logger.info(
+        "upload started | user_id=%s category_id=%s filename=%s",
+        user_id, category_id, file.filename,
+    )
+
+    category = db.query(Category).filter(
+        Category.id == category_id, Category.is_active.is_(True)
+    ).first()
     if category is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
 
     extension = Path(file.filename or "").suffix.lstrip(".").lower()
-    user_id = current_user["user_id"]
+
+    # Upload to S3 first — no DB record is created unless this succeeds.
+    s3_key = S3PathBuilder.knowledge_document(
+        user_id=user_id,
+        category_id=category_id,
+        filename=file.filename,
+    )
+    try:
+        s3_service.upload_file(file, s3_key)
+    except Exception:
+        logger.exception("upload to S3 failed | user_id=%s filename=%s", user_id, file.filename)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to upload file to storage. Please try again.",
+        )
+    logger.info("upload completed | user_id=%s key=%s", user_id, s3_key)
 
     document = KnowledgeDocument(
         title=title,
         file_name=file.filename,
-        file_path="",
+        file_path=s3_key,
         extension=extension,
         category_id=category_id,
         user_id=user_id,
     )
     document = create_knowledge_document(db, document)
+    logger.info("database entry created | document_id=%s", document.id)
 
-    s3_key = S3PathBuilder.knowledge_document(
-        user_id=user_id,
-        category_id=category_id,
-        document_id=document.id,
-        filename=file.filename,
-    )
-    s3_service.upload_file(file, s3_key)
+    background_tasks.add_task(process_knowledge_document, document.id)
 
-    document = update_knowledge_document(db, document, file_path=s3_key)
     return _to_response(document)
 
 
 @router.get("/list", response_model=list[DocumentResponse])
-def list_documents(
+async def list_documents(
     category_id: Optional[int] = None,
     db: Session = Depends(get_db),
 ):
@@ -96,7 +118,7 @@ def list_documents(
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
-def get_document(
+async def get_document(
     document_id: int,
     db: Session = Depends(get_db),
 ):
@@ -107,7 +129,7 @@ def get_document(
 
 
 @router.get("/{document_id}/download")
-def download_document(
+async def download_document(
     document_id: int,
     db: Session = Depends(get_db),
 ):
@@ -120,7 +142,7 @@ def download_document(
 
 
 @router.put("/{document_id}", response_model=DocumentResponse)
-def update_document(
+async def update_document(
     document_id: int,
     request: DocumentUpdateRequest,
     db: Session = Depends(get_db),
@@ -142,7 +164,7 @@ def update_document(
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_document(
+async def delete_document(
     document_id: int,
     db: Session = Depends(get_db),
 ):

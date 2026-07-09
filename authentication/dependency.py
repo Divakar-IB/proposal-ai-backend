@@ -30,7 +30,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired access token",
         )
-    return 
+    return payload
 
 def require_role(*roles: UserRole):
     """

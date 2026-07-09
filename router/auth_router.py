@@ -34,7 +34,7 @@ router = APIRouter(
 
 
 @router.post("/register", response_model=RegisterResponse)
-def register_user(
+async def register_user(
     register_request: RegisterRequest,
     db: Session = Depends(get_db),
 ):
@@ -42,7 +42,7 @@ def register_user(
 
 
 @router.post("/login", response_model=LoginResponse)
-def login_user(
+async def login_user(
     login_request: LoginRequest,
     db: Session = Depends(get_db),
 ):
@@ -50,7 +50,7 @@ def login_user(
 
 
 @router.post("/refresh", response_model=RefreshResponse)
-def refresh_token(
+async def refresh_token(
     refresh_request: RefreshRequest,
     db: Session = Depends(get_db),
 ):
@@ -66,7 +66,7 @@ def refresh_token(
 
 
 @router.post("/reset_password", response_model=ResetPasswordResponse)
-def reset_user_password(
+async def reset_user_password(
     reset_password_request: ResetPasswordRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
@@ -79,7 +79,7 @@ def reset_user_password(
 
 
 @router.post("/create-user", response_model=CreateUserResponse)
-def create_user_endpoint(
+async def create_user_endpoint(
     create_user_request: CreateUserRequest,
     db: Session = Depends(get_db),
     _: dict = Depends(require_role(UserRole.ADMIN)),

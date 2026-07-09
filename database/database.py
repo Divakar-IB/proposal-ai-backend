@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
 from config import config
@@ -34,6 +36,25 @@ def get_db():
         db.rollback()
         raise
 
+    finally:
+        db.close()
+        SessionLocal.remove()
+
+
+@contextmanager
+def db_session():
+    """
+    Session helper for code that runs outside the request lifecycle
+    (e.g. BackgroundTasks), where the request-scoped get_db session is
+    already closed by the time the task runs.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
         SessionLocal.remove()
