@@ -31,3 +31,16 @@ class DocumentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+            
+class Pagination(BaseModel):
+    page: int
+    limit: int
+    total_pages: int
+
+
+class DocumentListResponse(BaseModel):
+    pagination: Pagination
+    total: int
+    page_numbers: list[int]
+    rows: int
+    data: list[DocumentResponse]

@@ -22,6 +22,7 @@ from database.db_enum import (
     DocumentAvailability,
     ProposalStatus,
     ProposalSectionStatus,
+    KnowledgeStatus
 )
 
 

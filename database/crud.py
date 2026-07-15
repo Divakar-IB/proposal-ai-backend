@@ -2,7 +2,9 @@ from typing import Any, Optional
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import Select
 
+from database.db_enum import KnowledgeStatus
 from database.models import (
     KnowledgeChunk,
     KnowledgeDocument,

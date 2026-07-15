@@ -16,17 +16,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from authentication.dependency import get_current_user
 from database.crud import (
+    build_knowledge_documents_query,
     create_knowledge_document,
     delete_knowledge_document,
     get_knowledge_document_by_id,
-    get_knowledge_documents,
     update_knowledge_document,
 )
 from database.database import get_db
 from database.db_enum import DocumentAvailability, IngestionStatus
 from database.models import Category, KnowledgeDocument
-from schemas.document import DocumentResponse, DocumentUpdateRequest
+from schemas.document import DocumentListResponse, DocumentResponse, DocumentUpdateRequest
 from tasks.arq_pool import get_arq_pool
+from utilities.pagination import paginate
 from utilities.logger import get_logger
 from utilities.s3_service import S3PathBuilder, S3Service
 
@@ -135,13 +136,19 @@ async def process_document(
     return _to_response(document)
 
 
-@router.get("/list", response_model=list[DocumentResponse])
+@router.get("/list", response_model=DocumentListResponse)
 async def list_documents(
     category_id: Optional[int] = None,
+    search: Optional[str] = None,
+    status: Optional[KnowledgeStatus] = None,
+    page: int = 1,
+    limit: int = 10,
     db: AsyncSession = Depends(get_db),
 ):
-    documents = await get_knowledge_documents(db, category_id=category_id)
-    return [_to_response(document) for document in documents]
+    query = build_knowledge_documents_query(
+        category_id=category_id, search=search, knowledge_status=status
+    )
+    return await paginate(db, query, page=page, limit=limit, serializer=_to_response)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
