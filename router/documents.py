@@ -23,7 +23,7 @@ from database.crud import (
     update_knowledge_document,
 )
 from database.database import get_db
-from database.db_enum import IngestionStatus
+from database.db_enum import DocumentAvailability, IngestionStatus
 from database.models import Category, KnowledgeDocument
 from schemas.document import DocumentResponse, DocumentUpdateRequest
 from tasks.arq_pool import get_arq_pool
@@ -42,7 +42,8 @@ router = APIRouter(
 def _to_response(document: KnowledgeDocument) -> DocumentResponse:
     return DocumentResponse(
         id=document.id,
-        title=document.title,
+        document_name=document.title,
+        description=document.description,
         file_name=document.file_name,
         extension=document.extension,
         category_id=document.category_id,
@@ -50,14 +51,19 @@ def _to_response(document: KnowledgeDocument) -> DocumentResponse:
         user_id=document.user_id,
         version=document.version,
         status=document.status,
+        availability_status=document.availability_status,
+        tags=document.tags or [],
         created_at=document.created_at,
     )
 
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
-    title: str = Form(...),
+    document_name: str = Form(...),
+    description: str = Form(...),
     category_id: int = Form(...),
+    status: DocumentAvailability = Form(DocumentAvailability.ACTIVE),
+    tags: list[str] = Form(default_factory=list),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
@@ -94,18 +100,21 @@ async def upload_document(
     logger.info("upload completed | user_id=%s key=%s", user_id, s3_key)
 
     document = KnowledgeDocument(
-        title=title,
+        title=document_name,
+        description=description,
         file_name=file.filename,
         file_path=s3_key,
         extension=extension,
         category_id=category_id,
         user_id=user_id,
+        tags=tags,
+        availability_status=status,
     )
     document = await create_knowledge_document(db, document)
     logger.info("database entry created | document_id=%s", document.id)
 
-    pool = await get_arq_pool()
-    await pool.enqueue_job("knowledge_document_job", document.id)
+    # pool = await get_arq_pool()
+    # await pool.enqueue_job("knowledge_document_job", document.id)
 
     return _to_response(document)
 
@@ -180,6 +189,8 @@ async def update_document(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
 
     updates = {k: v for k, v in request.model_dump(exclude_unset=True).items() if v is not None}
+    if "document_name" in updates:
+        updates["title"] = updates.pop("document_name")
     document = await update_knowledge_document(db, document, **updates)
     return _to_response(document)
 

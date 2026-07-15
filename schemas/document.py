@@ -3,17 +3,21 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from database.db_enum import IngestionStatus
+from database.db_enum import DocumentAvailability, IngestionStatus
 
 
 class DocumentUpdateRequest(BaseModel):
-    title: Optional[str] = None
+    document_name: Optional[str] = None
+    description: Optional[str] = None
     category_id: Optional[int] = None
+    availability_status: Optional[DocumentAvailability] = None
+    tags: Optional[list[str]] = None
 
 
 class DocumentResponse(BaseModel):
     id: int
-    title: str
+    document_name: str
+    description: Optional[str] = None
     file_name: str
     extension: str
     category_id: int
@@ -21,6 +25,8 @@ class DocumentResponse(BaseModel):
     user_id: int
     version: int
     status: IngestionStatus
+    availability_status: DocumentAvailability
+    tags: list[str] = []
     created_at: datetime
 
     class Config:

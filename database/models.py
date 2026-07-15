@@ -9,7 +9,9 @@ from sqlalchemy import (
     Enum as SAEnum,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Enum as SAEnum
+
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.database import Base
@@ -17,6 +19,7 @@ from database.db_enum import (
     UserRole,
     IngestionStatus,
     DocumentStatus,
+    DocumentAvailability,
     ProposalStatus,
     ProposalSectionStatus,
 )
@@ -58,16 +61,23 @@ class KnowledgeDocument(BasicModel):
     __tablename__ = "knowledge_documents"
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     extension: Mapped[str] = mapped_column(String(20), nullable=False)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     version: Mapped[int] = mapped_column(default=1)
+    tags: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String), nullable=True)
     status: Mapped[IngestionStatus] = mapped_column(
         SAEnum(IngestionStatus), nullable=False, default=IngestionStatus.PENDING
     )
-    extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    availability_status: Mapped[DocumentAvailability] = mapped_column(
+        SAEnum(DocumentAvailability, name="availability"),
+        nullable=False,
+        default=DocumentAvailability.ACTIVE,
+    )
+    # extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     category: Mapped["Category"] = relationship(back_populates="knowledge_document", lazy="selectin")
     uploader: Mapped["User"] = relationship(back_populates="knowledge_documents")
