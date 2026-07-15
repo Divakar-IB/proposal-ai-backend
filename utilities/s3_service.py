@@ -56,16 +56,22 @@ class S3PathBuilder:
     @staticmethod
     def requirement_document(
         user_id: int,
-        requirement_document_id: int,
         filename: str,
+        requirement_document_id: Optional[int] = None,
     ) -> str:
+        """
+        requirement_document_id is optional: the S3 key must be built *before* the
+        DB row exists (upload has to succeed first), so a fresh uuid is used as
+        the folder segment when no requirement_document_id is available yet.
+        """
 
         extension = Path(filename).suffix
+        doc_segment = str(requirement_document_id) if requirement_document_id is not None else uuid4().hex
 
         return (
             f"input/requirements/"
             f"{user_id}/"
-            f"{requirement_document_id}/"
+            f"{doc_segment}/"
             f"{uuid4()}{extension}"
         )
 

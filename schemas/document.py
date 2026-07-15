@@ -27,20 +27,17 @@ class DocumentResponse(BaseModel):
     status: IngestionStatus
     availability_status: DocumentAvailability
     tags: list[str] = []
+    url: str
     created_at: datetime
 
     class Config:
         from_attributes = True
             
-class Pagination(BaseModel):
-    page: int
-    limit: int
-    total_pages: int
 
 
 class DocumentListResponse(BaseModel):
-    pagination: Pagination
+    page: int
+    limit: int
+    total_pages: int
     total: int
-    page_numbers: list[int]
-    rows: int
     data: list[DocumentResponse]

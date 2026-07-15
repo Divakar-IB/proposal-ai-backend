@@ -4,7 +4,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from database.db_enum import KnowledgeStatus
+from database.db_enum import DocumentAvailability
 from database.models import (
     KnowledgeChunk,
     KnowledgeDocument,
@@ -52,7 +52,7 @@ async def get_knowledge_document_by_id(db: AsyncSession, document_id: int) -> Kn
 def build_knowledge_documents_query(
     category_id: Optional[int] = None,
     search: Optional[str] = None,
-    knowledge_status: Optional[KnowledgeStatus] = None,
+    knowledge_status: Optional[DocumentAvailability] = None,
 ) -> Select:
     query = select(KnowledgeDocument).filter(KnowledgeDocument.is_active.is_(True))
     if category_id is not None:
@@ -60,7 +60,7 @@ def build_knowledge_documents_query(
     if search:
         query = query.filter(KnowledgeDocument.title.ilike(f"%{search}%"))
     if knowledge_status is not None:
-        query = query.filter(KnowledgeDocument.knowledge_status == knowledge_status)
+        query = query.filter(KnowledgeDocument.availability_status == knowledge_status)
     return query.order_by(KnowledgeDocument.created_at.desc())
 
 
