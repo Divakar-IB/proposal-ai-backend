@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from authentication.dependency import hash_password, verify_password
 from authentication.jwt_handler import (
@@ -28,13 +28,11 @@ from schemas.auth import (
     RegisterRequest,
     RegisterResponse,
 )
-from middleware.middleware import handle_exceptions
 from utilities.generic import assign_role
 
 
-@handle_exceptions
-def login(db: Session, login_request: LoginRequest) -> LoginResponse:
-    user = get_user_by_email(db, login_request.email)
+async def login(db: AsyncSession, login_request: LoginRequest) -> LoginResponse:
+    user = await get_user_by_email(db, login_request.email)
 
     if user is None or not verify_password(login_request.password, user.hashed_password):
         raise HTTPException(
@@ -62,9 +60,8 @@ def login(db: Session, login_request: LoginRequest) -> LoginResponse:
     )
 
 
-@handle_exceptions
-def register(db: Session, register_request: RegisterRequest) -> RegisterResponse:
-    if get_user_by_email(db, register_request.email) is not None:
+async def register(db: AsyncSession, register_request: RegisterRequest) -> RegisterResponse:
+    if await get_user_by_email(db, register_request.email) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
@@ -76,13 +73,12 @@ def register(db: Session, register_request: RegisterRequest) -> RegisterResponse
         role=assign_role(register_request.role),
         is_first_login=True,
     )
-    create_user(db, user)
+    await create_user(db, user)
 
     return RegisterResponse(message="Registered successfully", email=user.email)
 
 
-@handle_exceptions
-def refresh(db: Session, refresh_request: RefreshRequest) -> RefreshResponse:
+async def refresh(db: AsyncSession, refresh_request: RefreshRequest) -> RefreshResponse:
     payload = verify_refresh_token(refresh_request.refresh_token)
     if payload is None:
         raise HTTPException(
@@ -90,7 +86,7 @@ def refresh(db: Session, refresh_request: RefreshRequest) -> RefreshResponse:
             detail="Invalid or expired refresh token",
         )
 
-    user = get_user_by_id(db, payload.get("user_id"))
+    user = await get_user_by_id(db, payload.get("user_id"))
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -105,14 +101,13 @@ def refresh(db: Session, refresh_request: RefreshRequest) -> RefreshResponse:
     return RefreshResponse(access_token=new_access_token)
 
 
-@handle_exceptions
-def reset_password(
-    db: Session,
+async def reset_password(
+    db: AsyncSession,
     request: ResetPasswordRequest,
     current_user: dict,
 ) -> ResetPasswordResponse:
 
-    user = get_user_by_id(db, current_user["user_id"])
+    user = await get_user_by_id(db, current_user["user_id"])
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -125,16 +120,15 @@ def reset_password(
             detail="Current password is incorrect",
         )
 
-    update_user_password(db, user, hash_password(request.new_password))
+    await update_user_password(db, user, hash_password(request.new_password))
     return ResetPasswordResponse(message="Password reset successfully.")
 
 
-@handle_exceptions
-def create_user_by_admin(
-    db: Session,
+async def create_user_by_admin(
+    db: AsyncSession,
     request: CreateUserRequest,
 ) -> CreateUserResponse:
-    if get_user_by_email(db, request.email) is not None:
+    if await get_user_by_email(db, request.email) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
@@ -146,7 +140,7 @@ def create_user_by_admin(
         role=request.role,
         is_first_login=True,
     )
-    create_user(db, user)
+    await create_user(db, user)
 
     return CreateUserResponse(
         message="User created successfully. Share the registered email and password with the user.",
