@@ -18,7 +18,16 @@ class DocumentStatus(str,Enum):
 
 
 class ProposalStatus(str, Enum):
-    DRAFT      = "draft"        
-    GENERATING = "generating"   
-    REVIEW     = "review"       
-    APPROVED   = "approved"  
+    DRAFT      = "draft"
+    GENERATING = "generating"
+    REVIEW     = "review"
+    APPROVED   = "approved"
+    FAILED     = "failed"
+
+
+class ProposalSectionStatus(str, Enum):
+    PENDING        = "pending"
+    DRAFTING       = "drafting"
+    DRAFTED        = "drafted"
+    NEEDS_REVISION = "needs_revision"
+    APPROVED       = "approved"

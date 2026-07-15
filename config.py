@@ -14,8 +14,6 @@ class DatabaseConfig(BaseModel):
     host: str
     port: int
     db_name: str
-    sslmode: str
-    channel_binding: str
     pool_size: int
     max_overflow: int
     pool_recycle: int
@@ -38,16 +36,30 @@ class AWSConfig(BaseModel):
 class PineconeConfig(BaseModel):
     api_key: str
     index_name: str
-    dimension: int = 1536
+    dimension: int = 1024  # BGE-M3 embedding size
     metric: str = "cosine"
     cloud: str = "aws"
     region: str = "us-east-1"
+
+class NovitaConfig(BaseModel):
+    api_key: str
+    chat_base_url: str = "https://api.novita.ai/openai"
+    embedding_base_url: str = "https://api.novita.ai/v3/openai"
+    embedding_model: str = "baai/bge-m3"
+    llm_model: str = "openai/gpt-oss-120b"
+
+class RedisConfig(BaseModel):
+    host: str = "localhost"
+    port: int = 6379
+    db: int = 0
 
 class AppConfig(BaseSettings):
     database: DatabaseConfig
     jwt: JWTConfig
     aws: AWSConfig
     pinecone: PineconeConfig
+    novita: NovitaConfig
+    redis: RedisConfig = RedisConfig()
     debug: bool = False
     allowed_origins: List[str] = Field(default_factory=list)
 

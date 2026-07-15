@@ -1,75 +1,18 @@
-import traceback
-from functools import wraps
+from fastapi import FastAPI
 
-from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from sqlalchemy.exc import SQLAlchemyError
-
-from config import config
+from middleware.cors import setup_cors
+from middleware.error_handler import ErrorHandlerMiddleware
 
 
-
-def handle_exceptions(func):
-    """
-    Decorator applied to service functions.
-
-    Passes HTTPExceptions through unchanged (they carry intentional
-    status codes).  Catches SQLAlchemy errors and any other unexpected
-    exception and maps them to consistent JSON error responses so
-    callers never receive unformatted Python tracebacks.
-    """
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except HTTPException:
-            raise
-        except SQLAlchemyError:
-            traceback.print_exc()
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="A database error occurred. Please try again.",
-            )
-        except Exception:
-            traceback.print_exc()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="An unexpected error occurred.",
-            )
-    return wrapper
-
-
-async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
-    traceback.print_exc()
-    return JSONResponse(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        content={"detail": "A database error occurred. Please try again."},
-    )
-
-
-async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    traceback.print_exc()
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An unexpected error occurred."},
-    )
-
-
-# App-wide middleware / exception handler registration
 def setup_middleware(app: FastAPI) -> None:
     """
-    Registers all app-wide middleware and exception handlers.
+    Registers all app-wide middleware.
 
     Call once from main.py right after creating the FastAPI app.
+    Order matters: Starlette wraps the LAST-added middleware outermost,
+    so the error handler is added first (innermost) and CORS is added
+    second (outermost) — that way CORS headers still land on the
+    JSON responses the error handler returns.
     """
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=config.allowed_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
-    app.add_exception_handler(Exception, generic_exception_handler)
+    app.add_middleware(ErrorHandlerMiddleware)
+    setup_cors(app)
