@@ -49,14 +49,19 @@ async def get_knowledge_document_by_id(db: AsyncSession, document_id: int) -> Kn
     return result.scalars().first()
 
 
-async def get_knowledge_documents(
-    db: AsyncSession, category_id: Optional[int] = None
-) -> list[KnowledgeDocument]:
+def build_knowledge_documents_query(
+    category_id: Optional[int] = None,
+    search: Optional[str] = None,
+    knowledge_status: Optional[KnowledgeStatus] = None,
+) -> Select:
     query = select(KnowledgeDocument).filter(KnowledgeDocument.is_active.is_(True))
     if category_id is not None:
         query = query.filter(KnowledgeDocument.category_id == category_id)
-    result = await db.execute(query.order_by(KnowledgeDocument.created_at.desc()))
-    return list(result.scalars().all())
+    if search:
+        query = query.filter(KnowledgeDocument.title.ilike(f"%{search}%"))
+    if knowledge_status is not None:
+        query = query.filter(KnowledgeDocument.knowledge_status == knowledge_status)
+    return query.order_by(KnowledgeDocument.created_at.desc())
 
 
 async def create_knowledge_document(db: AsyncSession, document: KnowledgeDocument) -> KnowledgeDocument:
