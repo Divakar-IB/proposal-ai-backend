@@ -48,13 +48,11 @@ async def get_knowledge_document_by_id(db: AsyncSession, document_id: int) -> Kn
 
 
 async def get_knowledge_documents(
-    db: AsyncSession, category_id: Optional[int] = None, search: Optional[str] = None
+    db: AsyncSession, category_id: Optional[int] = None
 ) -> list[KnowledgeDocument]:
     query = select(KnowledgeDocument).filter(KnowledgeDocument.is_active.is_(True))
     if category_id is not None:
         query = query.filter(KnowledgeDocument.category_id == category_id)
-    if search:
-        query = query.filter(KnowledgeDocument.title.ilike(f"%{search}%"))
     result = await db.execute(query.order_by(KnowledgeDocument.created_at.desc()))
     return list(result.scalars().all())
 
@@ -121,10 +119,7 @@ async def update_requirement_document(
     return document
 
 
-# ------------------------------------------------------------------
 # Proposal / ProposalSection
-# ------------------------------------------------------------------
-
 async def create_proposal(db: AsyncSession, proposal: Proposal) -> Proposal:
     db.add(proposal)
     await db.commit()

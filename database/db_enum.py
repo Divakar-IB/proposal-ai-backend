@@ -31,3 +31,8 @@ class ProposalSectionStatus(str, Enum):
     DRAFTED        = "drafted"
     NEEDS_REVISION = "needs_revision"
     APPROVED       = "approved"
+
+
+class DocumentAvailability(str, Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
