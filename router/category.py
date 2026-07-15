@@ -5,8 +5,8 @@ from fastapi import (
     Depends
 )
 from fastapi.responses import JSONResponse
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from database.database import get_db
 from database.models import Category, KnowledgeDocument
 from schemas.category import CategoryRequest
@@ -21,24 +21,24 @@ router = APIRouter(
 @router.post("")
 async def create_or_update_category(
     request: CategoryRequest,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     if request.id:
         # Update
-        category = db.query(Category).filter(Category.id == request.id).first()
+        result = await db.execute(select(Category).filter(Category.id == request.id))
+        category = result.scalars().first()
         if not category:
             raise HTTPException(
                 status_code=404,
                 detail="Category not found"
             )
-        existing = (
-            db.query(Category)
-            .filter(
+        existing_result = await db.execute(
+            select(Category).filter(
                 Category.name == request.name,
                 Category.id != request.id
             )
-            .first()
         )
+        existing = existing_result.scalars().first()
         if existing:
             raise HTTPException(
                 status_code=400,
@@ -51,7 +51,8 @@ async def create_or_update_category(
 
     else:
         # Create
-        existing = db.query(Category).filter(Category.name == request.name).first()
+        existing_result = await db.execute(select(Category).filter(Category.name == request.name))
+        existing = existing_result.scalars().first()
         if existing:
             raise HTTPException(
                 status_code=400,
@@ -64,19 +65,19 @@ async def create_or_update_category(
         db.add(category)
         message = "Category created successfully"
 
-    db.commit()
+    await db.commit()
     return JSONResponse(
         status_code=200,
         content={"message": message}
     )
-    
+
 
 @router.get("/list")
 async def get_categories(
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    result = (
-        db.query(
+    query_result = await db.execute(
+        select(
             Category.id,
             Category.name,
             Category.description,
@@ -88,8 +89,8 @@ async def get_categories(
         )
         .filter(Category.is_active.is_(True))
         .group_by(Category.id)
-        .all()
     )
+    result = query_result.all()
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,content={
