@@ -17,6 +17,11 @@ def generate_temp_password(length: int = 12) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+def generate_otp(length: int = 6) -> str:
+    """Generate a cryptographically secure numeric OTP."""
+    return "".join(secrets.choice(string.digits) for _ in range(length))
+
+
 
 def sanitize_filename(filename: str) -> str:
     """
