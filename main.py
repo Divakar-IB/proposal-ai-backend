@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from sqlalchemy import Enum as SAEnum
 
@@ -8,14 +10,23 @@ from middleware.middleware import setup_middleware
 from router.auth_router import router as auth_router
 from router import category
 from router import documents
+from router import proposals
+from router import requirements
 
-# Idempotent: ensures the PG ENUM type exists even if the table was dropped while the type survived.
-SAEnum(UserRole, name="userrole").create(bind=engine, checkfirst=True)
-Base.metadata.create_all(bind=engine, checkfirst=True)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        # Idempotent: ensures the PG ENUM type exists even if the table was dropped while the type survived.
+        await conn.run_sync(lambda sync_conn: SAEnum(UserRole, name="userrole").create(bind=sync_conn, checkfirst=True))
+        await conn.run_sync(Base.metadata.create_all, checkfirst=True)
+    yield
+
 
 app = FastAPI(
     title="Proposal AI",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 setup_middleware(app)
@@ -23,6 +34,8 @@ setup_middleware(app)
 app.include_router(auth_router)
 app.include_router(category.router)
 app.include_router(documents.router)
+app.include_router(requirements.router)
+app.include_router(proposals.router)
 
 @app.get("/")
 def root():

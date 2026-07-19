@@ -78,7 +78,7 @@ class KnowledgeDocument(BasicModel):
         nullable=False,
         default=DocumentAvailability.ACTIVE,
     )
-    # extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     category: Mapped["Category"] = relationship(back_populates="knowledge_document", lazy="selectin")
     uploader: Mapped["User"] = relationship(back_populates="knowledge_documents")

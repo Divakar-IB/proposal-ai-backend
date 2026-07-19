@@ -1,69 +1,60 @@
 from pathlib import Path
 from typing import Optional
 
-from database.crud import get_knowledge_document_by_id, update_knowledge_document
+from chunking.models import Chunk
+from chunking.pipeline import chunk_document
+from database.crud import (
+    create_knowledge_chunks,
+    delete_knowledge_chunks_for_document,
+    get_knowledge_document_by_id,
+    update_knowledge_document,
+)
 from database.database import db_session
 from database.db_enum import IngestionStatus
-from extraction.docx_extractor import DocxExtractor
+from database.models import KnowledgeChunk
+from embedding.embedder import embed_texts
+from extraction.base import ExtractedDocument
+from extraction.factory import run_extraction
 from utilities.logger import get_logger
 from utilities.s3_service import S3Service
+from vectorstore.knowledge_store import delete_document_vectors, upsert_chunks
 
 logger = get_logger(__name__)
 s3_service = S3Service()
 
 
-# ------------------------------------------------------------------
-# Extension points — plug your parsing / chunking / embedding /
-# Pinecone code in here. Everything else in this file is orchestration
-# (download, status updates, logging, error handling, cleanup) and
-# shouldn't need to change as you fill these in.
-# ------------------------------------------------------------------
-
-def extract_text(file_path: str, extension: str) -> str:
-    if extension == "docx":
-        extracted = DocxExtractor().extract(file_path)
-        return DocxExtractor().to_json(extracted)
-    if extension == "pdf":
-        raise NotImplementedError("TODO: implement PDF parsing")
-    if extension in {"png", "jpg", "jpeg"}:
-        raise NotImplementedError("TODO: implement image OCR parsing")
-    raise NotImplementedError(f"No parser registered for '.{extension}'")
+def extract_document(file_path: str, source_filename: str, extension: str) -> ExtractedDocument:
+    return run_extraction(file_path, source_filename, extension)
 
 
-def chunk_text(text: str) -> list[str]:
-    raise NotImplementedError("TODO: implement chunking (RAG/chunking.py)")
+def build_chunks(document: ExtractedDocument, root_prefix: str) -> list[Chunk]:
+    return chunk_document(document, root_prefix=root_prefix)
 
 
-def generate_embeddings(chunks: list[str]) -> list[list[float]]:
-    raise NotImplementedError("TODO: implement embeddings (vectorstore/embedding.py)")
-
-
-def upsert_vectors(document_id: int, chunks: list[str], embeddings: list[list[float]]) -> None:
-    raise NotImplementedError(
-        "TODO: implement Pinecone upsert (vectorstore/pinecone_client.py + index_manager.py)"
-    )
+def generate_embeddings(chunks: list[Chunk]) -> list[list[float]]:
+    return embed_texts([chunk.content for chunk in chunks])
 
 
 # ------------------------------------------------------------------
 # Orchestration
 # ------------------------------------------------------------------
 
-def process_knowledge_document(document_id: int) -> None:
+async def process_knowledge_document(document_id: int) -> None:
     """
-    Runs as a FastAPI BackgroundTask after a successful upload.
+    Runs as a background task (Arq job) after a successful upload.
     Opens its own DB session — the request-scoped session used by the
     upload endpoint is already closed by the time this runs.
     """
     logger.info("background task started | document_id=%s", document_id)
     temp_path: Optional[str] = None
 
-    with db_session() as db:
-        document = get_knowledge_document_by_id(db, document_id)
+    async with db_session() as db:
+        document = await get_knowledge_document_by_id(db, document_id)
         if document is None:
             logger.error("document not found, aborting | document_id=%s", document_id)
             return
 
-        update_knowledge_document(db, document, status=IngestionStatus.PROCESSING)
+        await update_knowledge_document(db, document, status=IngestionStatus.PROCESSING)
 
         try:
             temp_path = s3_service.download_to_tempfile(
@@ -75,27 +66,58 @@ def process_knowledge_document(document_id: int) -> None:
             )
 
             logger.info(
-                "parsing started | document_id=%s extension=%s",
+                "extraction started | document_id=%s extension=%s",
                 document_id, document.extension,
             )
-            text = extract_text(temp_path, document.extension)
-            logger.info("parsing completed | document_id=%s chars=%s", document_id, len(text))
+            extracted = extract_document(temp_path, document.file_name, document.extension)
+            logger.info(
+                "extraction completed | document_id=%s chars=%s pages=%s",
+                document_id, len(extracted.markdown), len(extracted.pages),
+            )
+            await update_knowledge_document(db, document, extracted_markdown=extracted.markdown)
 
-            chunks = chunk_text(text)
+            root_prefix = f"{document.category.name} > {document.title}"
+            chunks = build_chunks(extracted, root_prefix)
             logger.info("chunking completed | document_id=%s chunks=%s", document_id, len(chunks))
 
             embeddings = generate_embeddings(chunks)
             logger.info("embeddings generated | document_id=%s count=%s", document_id, len(embeddings))
 
-            upsert_vectors(document_id, chunks, embeddings)
+            # Re-processing (new version) wipes prior vectors/rows first — avoids orphaned
+            # Pinecone vectors and duplicate KnowledgeChunk rows for the same document.
+            delete_document_vectors(document_id)
+            await delete_knowledge_chunks_for_document(db, document_id)
+
+            vector_ids = upsert_chunks(
+                document_id=document_id,
+                category_id=document.category_id,
+                source_filename=document.file_name,
+                chunks=chunks,
+                embeddings=embeddings,
+            )
             logger.info("pinecone upload completed | document_id=%s", document_id)
 
-            update_knowledge_document(db, document, status=IngestionStatus.INDEXED)
+            chunk_rows = [
+                KnowledgeChunk(
+                    knowledge_document_id=document_id,
+                    chunk_index=chunk.chunk_index,
+                    breadcrumb=chunk.breadcrumb,
+                    content=chunk.content,
+                    page_number=chunk.page_number,
+                    token_count=chunk.token_count,
+                    pinecone_vector_id=vector_id,
+                )
+                for chunk, vector_id in zip(chunks, vector_ids)
+            ]
+            await create_knowledge_chunks(db, chunk_rows)
+            logger.info("chunk rows persisted | document_id=%s count=%s", document_id, len(chunk_rows))
+
+            await update_knowledge_document(db, document, status=IngestionStatus.INDEXED)
             logger.info("processing completed | document_id=%s", document_id)
 
         except Exception:
             logger.exception("processing failed | document_id=%s", document_id)
-            update_knowledge_document(db, document, status=IngestionStatus.FAILED)
+            await update_knowledge_document(db, document, status=IngestionStatus.FAILED)
 
         finally:
             if temp_path:

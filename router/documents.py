@@ -3,10 +3,12 @@ from typing import Optional
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
     HTTPException,
+    Response,
     UploadFile,
     status,
 )
@@ -25,8 +27,8 @@ from database.crud import (
 from database.database import get_db
 from database.db_enum import DocumentAvailability, IngestionStatus
 from database.models import Category, KnowledgeDocument
-from schemas.document import DocumentListResponse, DocumentResponse, DocumentUpdateRequest
-from tasks.arq_pool import get_arq_pool
+from schemas.document import DocumentListResponse, DocumentResponse
+from tasks.document_processing import process_knowledge_document
 from utilities.pagination import paginate
 from utilities.logger import get_logger
 from utilities.s3_service import S3PathBuilder, S3Service
@@ -59,22 +61,25 @@ def _to_response(document: KnowledgeDocument) -> DocumentResponse:
     )
 
 
-@router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
+    background_tasks: BackgroundTasks,
+    # response: Response,
+    document_id: Optional[int] = None,
     document_name: str = Form(...),
     description: str = Form(...),
     category_id: int = Form(...),
-    status: DocumentAvailability = Form(DocumentAvailability.ACTIVE),
+    availability_status: DocumentAvailability = Form(DocumentAvailability.ACTIVE),
     tags: list[str] = Form(default_factory=list),
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    """Creates a new document, or updates an existing one when `document_id`
+    is provided — `file` is optional on update (omit it to keep the current
+    file, or pass a new one to replace it)."""
+
     user_id = current_user["user_id"]
-    logger.info(
-        "upload started | user_id=%s category_id=%s filename=%s",
-        user_id, category_id, file.filename,
-    )
 
     category_result = await db.execute(
         select(Category).filter(Category.id == category_id, Category.is_active.is_(True))
@@ -82,6 +87,69 @@ async def upload_document(
     category = category_result.scalars().first()
     if category is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+
+    if document_id is not None:
+        document = await get_knowledge_document_by_id(db, document_id)
+        if document is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+        updates = {
+            "title": document_name,
+            "description": description,
+            "category_id": category_id,
+            "availability_status": availability_status,
+            "tags": tags,
+        }
+
+        if file is not None:
+            extension = Path(file.filename or "").suffix.lstrip(".").lower()
+            s3_key = S3PathBuilder.knowledge_document(
+                user_id=user_id,
+                category_id=category_id,
+                filename=file.filename,
+                document_id=document_id,
+            )
+            try:
+                s3_service.upload_file(file, s3_key)
+            except Exception:
+                logger.exception(
+                    "re-upload to S3 failed | document_id=%s filename=%s", document_id, file.filename
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to upload file to storage. Please try again.",
+                )
+
+            old_file_path = document.file_path
+            updates.update({
+                "file_name": file.filename,
+                "file_path": s3_key,
+                "extension": extension,
+                "version": document.version + 1,
+            })
+            s3_service.delete_file(old_file_path)
+            logger.info("file replaced | document_id=%s key=%s", document_id, s3_key)
+
+        document = await update_knowledge_document(db, document, **updates)
+        logger.info("document updated | document_id=%s", document.id)
+
+        if file is not None:
+            # File content changed — re-chunk/re-embed/re-upsert in the background.
+            background_tasks.add_task(process_knowledge_document, document.id)
+
+        # response.status_code = status.HTTP_200_OK
+        return _to_response(document)
+
+    if file is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="file is required when creating a document",
+        )
+
+    logger.info(
+        "upload started | user_id=%s category_id=%s filename=%s",
+        user_id, category_id, file.filename,
+    )
 
     extension = Path(file.filename or "").suffix.lstrip(".").lower()
 
@@ -110,28 +178,28 @@ async def upload_document(
         category_id=category_id,
         user_id=user_id,
         tags=tags,
-        availability_status=status,
+        availability_status=availability_status,
     )
     document = await create_knowledge_document(db, document)
     logger.info("database entry created | document_id=%s", document.id)
 
-    # pool = await get_arq_pool()
-    # await pool.enqueue_job("knowledge_document_job", document.id)
+    background_tasks.add_task(process_knowledge_document, document.id)
 
+    # response.status_code = status.HTTP_201_CREATED
     return _to_response(document)
 
 
 @router.post("/{document_id}/process", response_model=DocumentResponse)
 async def process_document(
     document_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     document = await get_knowledge_document_by_id(db, document_id)
     if document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    pool = await get_arq_pool()
-    await pool.enqueue_job("knowledge_document_job", document_id)
+    background_tasks.add_task(process_knowledge_document, document_id)
 
     document = await update_knowledge_document(db, document, status=IngestionStatus.PENDING)
     return _to_response(document)
@@ -198,33 +266,6 @@ async def download_document(
     )
 
 
-@router.put("/{document_id}", response_model=DocumentResponse)
-async def update_document(
-    document_id: int,
-    request: DocumentUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    document = await get_knowledge_document_by_id(db, document_id)
-    if document is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-
-    if request.category_id is not None:
-        category_result = await db.execute(
-            select(Category).filter(
-                Category.id == request.category_id, Category.is_active.is_(True)
-            )
-        )
-        category = category_result.scalars().first()
-        if category is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-
-    updates = {k: v for k, v in request.model_dump(exclude_unset=True).items() if v is not None}
-    if "document_name" in updates:
-        updates["title"] = updates.pop("document_name")
-    document = await update_knowledge_document(db, document, **updates)
-    return _to_response(document)
-
-
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: int,
@@ -232,7 +273,13 @@ async def delete_document(
 ):
     document = await get_knowledge_document_by_id(db, document_id)
     if document is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
 
-    await delete_knowledge_document(db, document)
+    # If this raises an exception, your middleware will return a 500 response.
     s3_service.delete_file(document.file_path)
+
+    # Only executed if S3 deletion succeeded.
+    await delete_knowledge_document(db, document)
