@@ -92,6 +92,23 @@ class ResetPasswordResponse(BaseModel):
     message: str
 
 
+# Forgot Password
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "message": "If this email is registered, an OTP has been sent to it."
+            }
+        }
+    )
+
+
 # Create User (Admin only)
 class CreateUserRequest(BaseModel):
     email: EmailStr

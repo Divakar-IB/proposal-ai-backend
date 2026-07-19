@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from authentication.auth_service import (
     create_user_by_admin,
+    forgot_password,
     login,
     refresh,
     register,
@@ -12,6 +13,8 @@ from authentication.dependency import get_current_user
 from database.database import get_db
 from database.db_enum import UserRole
 from schemas.auth import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
     CreateUserRequest,
@@ -63,6 +66,14 @@ async def refresh_token(
 #     db: AsyncSession = Depends(get_db),
 # ):
 #     return logout(db=db, logout_request=logout_request)
+
+
+@router.post("/forgot_password", response_model=ForgotPasswordResponse)
+async def forgot_password_endpoint(
+    forgot_password_request: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    return await forgot_password(db=db, request=forgot_password_request)
 
 
 @router.post("/reset_password", response_model=ResetPasswordResponse)

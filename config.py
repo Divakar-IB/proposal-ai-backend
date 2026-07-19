@@ -53,6 +53,14 @@ class RedisConfig(BaseModel):
     port: int = 6379
     db: int = 0
 
+class SMTPConfig(BaseModel):
+    host: str = "smtp.gmail.com"
+    port: int = 587
+    username: str
+    password: str
+    from_email: str
+    use_tls: bool = True
+
 class AppConfig(BaseSettings):
     database: DatabaseConfig
     jwt: JWTConfig
@@ -60,6 +68,7 @@ class AppConfig(BaseSettings):
     pinecone: PineconeConfig
     novita: NovitaConfig
     redis: RedisConfig = RedisConfig()
+    smtp: SMTPConfig
     debug: bool = False
     allowed_origins: List[str] = Field(default_factory=list)
 
