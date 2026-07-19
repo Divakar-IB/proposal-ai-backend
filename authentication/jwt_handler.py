@@ -44,6 +44,14 @@ def create_refresh_token(user_id: int) -> str:
     return _create_token(payload, timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
 
 
+def create_password_reset_token(user_id: int, expire_minutes: int) -> str:
+    payload = {
+        "user_id": user_id,
+        "token_type": "password_reset",
+    }
+    return _create_token(payload, timedelta(minutes=expire_minutes))
+
+
 # ------------------------------------------------------------------
 # Token Verification
 # ------------------------------------------------------------------
@@ -61,6 +69,16 @@ def verify_refresh_token(token: str) -> dict | None:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], issuer=ISSUER)
         if payload.get("token_type") != "refresh":
+            raise JWTError("Invalid token type")
+        return payload
+    except JWTError:
+        return None
+
+
+def verify_password_reset_token(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], issuer=ISSUER)
+        if payload.get("token_type") != "password_reset":
             raise JWTError("Invalid token type")
         return payload
     except JWTError:

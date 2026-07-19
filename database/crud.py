@@ -49,6 +49,14 @@ async def set_user_otp(db: AsyncSession, user: User, hashed_otp: str, expires_at
     return user
 
 
+async def clear_user_otp(db: AsyncSession, user: User) -> User:
+    user.otp_code = None
+    user.otp_expires_at = None
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def get_knowledge_document_by_id(db: AsyncSession, document_id: int) -> KnowledgeDocument | None:
     result = await db.execute(
         select(KnowledgeDocument).filter(
