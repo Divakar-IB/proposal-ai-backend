@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy import delete, select
@@ -49,6 +50,14 @@ async def create_user(db: AsyncSession, user: User) -> User:
 async def update_user_password(db: AsyncSession, user: User, hashed_password: str) -> User:
     user.hashed_password = hashed_password
     user.is_first_login = False
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def set_user_otp(db: AsyncSession, user: User, hashed_otp: str, expires_at: datetime) -> User:
+    user.otp_code = hashed_otp
+    user.otp_expires_at = expires_at
     await db.commit()
     await db.refresh(user)
     return user

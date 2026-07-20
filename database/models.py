@@ -44,6 +44,8 @@ class User(BasicModel):
         SAEnum(UserRole, name="userrole"), nullable=False, default=UserRole.USER
     )
     is_first_login: Mapped[bool] = mapped_column(default=True)
+    otp_code: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    otp_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
     knowledge_documents: Mapped[list["KnowledgeDocument"]] = relationship(back_populates="uploader")
     requirement_documents: Mapped[list["RequirementDocument"]] = relationship(back_populates="uploader")

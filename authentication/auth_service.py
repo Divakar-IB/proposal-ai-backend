@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,10 +13,13 @@ from database.crud import (
     create_user,
     get_user_by_email,
     get_user_by_id,
+    set_user_otp,
     update_user_password,
 )
 from database.models import User
 from schemas.auth import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
     CreateUserRequest,
@@ -28,7 +33,12 @@ from schemas.auth import (
     RegisterRequest,
     RegisterResponse,
 )
-from utilities.generic import assign_role
+from utilities.email_service import send_otp_email
+from utilities.generic import assign_role, generate_otp
+
+OTP_EXPIRE_MINUTES = 10
+
+GENERIC_FORGOT_PASSWORD_MESSAGE = "If this email is registered, an OTP has been sent to it."
 
 
 async def login(db: AsyncSession, login_request: LoginRequest) -> LoginResponse:
@@ -122,6 +132,22 @@ async def reset_password(
 
     await update_user_password(db, user, hash_password(request.new_password))
     return ResetPasswordResponse(message="Password reset successfully.")
+
+
+async def forgot_password(
+    db: AsyncSession,
+    request: ForgotPasswordRequest,
+) -> ForgotPasswordResponse:
+    user = await get_user_by_email(db, request.email)
+
+    # Always return a generic response so callers can't enumerate registered emails.
+    if user is not None and user.is_active:
+        otp = generate_otp()
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=OTP_EXPIRE_MINUTES)
+        await set_user_otp(db, user, hash_password(otp), expires_at)
+        await send_otp_email(user.email, otp, OTP_EXPIRE_MINUTES)
+
+    return ForgotPasswordResponse(message=GENERIC_FORGOT_PASSWORD_MESSAGE)
 
 
 async def create_user_by_admin(
