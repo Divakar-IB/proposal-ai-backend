@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.crud import (
-    get_active_categories,
+    get_knowledge_documents_by_ids,
     get_requirement_document_by_id,
     has_any_knowledge_chunks,
     update_requirement_document,
@@ -14,27 +14,24 @@ from database.db_enum import DocumentStatus
 from database.models import RequirementDocument
 from embedding.embedder import embed_query
 from extraction.factory import run_extraction
-from requirements_parsing.parser import parse_requirements
 from requirements_parsing.summary import summarize_requirements
 from utilities.logger import get_logger
 from utilities.s3_service import S3Service
-from vectorstore.knowledge_store import category_match_score
+from vectorstore.knowledge_store import query_chunks
 
 logger = get_logger(__name__)
 s3_service = S3Service()
 
-TOP_CATEGORY_MATCHES = 5
+TOP_DOCUMENT_MATCHES = 10
+CHUNK_POOL_SIZE = 30  # pulled before deduping to one best match per document
 
 
 async def process_requirement_document_pipeline(
-    db: AsyncSession, document: RequirementDocument
+    db: AsyncSession, document: RequirementDocument, additional_context: Optional[str] = None
 ) -> RequirementDocument:
     """
-    extract -> structured parse (GPT-OSS via Groq) -> summary -> per-category
-    knowledge-match scoring -> Postgres storage. Deliberately does NOT touch
-    Pinecone with the requirement document's own content — structured output
-    becomes the query input for retrieval, it is never embedded itself; the
-    only embedding call here is for scoring matches against existing chunks.
+    extract -> summary (GPT-OSS via Groq) -> per-document knowledge-match
+    scoring (using the summary as the query text) -> Postgres storage.
 
     Shared core used both by the upload endpoint (awaited synchronously, so
     the caller gets the summary/matches back in the same response) and by
@@ -54,19 +51,15 @@ async def process_requirement_document_pipeline(
             document_id, len(extracted.markdown), len(extracted.pages),
         )
 
-        requirements = parse_requirements(extracted.markdown)
-        logger.info("structured parse completed | document_id=%s", document_id)
-
-        summary = summarize_requirements(extracted.markdown)
+        summary = summarize_requirements(extracted.markdown, additional_context=additional_context)
         logger.info("summary generated | document_id=%s", document_id)
 
-        knowledge_matches = await _compute_knowledge_matches(db, requirements)
-        logger.info("knowledge match scored | document_id=%s categories=%s", document_id, len(knowledge_matches))
+        knowledge_matches = await _compute_knowledge_matches(db, summary)
+        logger.info("knowledge match scored | document_id=%s matches=%s", document_id, len(knowledge_matches))
 
         document = await update_requirement_document(
             db, document,
             extracted_markdown=extracted.markdown,
-            parsed_data=requirements.model_dump(),
             summary=summary,
             knowledge_matches=knowledge_matches,
             status=DocumentStatus.PARSED,
@@ -84,31 +77,41 @@ async def process_requirement_document_pipeline(
             logger.info("temp file cleaned up | document_id=%s path=%s", document_id, temp_path)
 
 
-async def _compute_knowledge_matches(db: AsyncSession, requirements) -> list[dict]:
+async def _compute_knowledge_matches(db: AsyncSession, query_text: str) -> list[dict]:
     # No knowledge documents indexed yet — skip the embedding call and Pinecone
     # query entirely rather than hitting an empty (or not-yet-created) index.
     if not await has_any_knowledge_chunks(db):
         return []
 
-    query_text = " ".join([
-        requirements.project_title,
-        requirements.scope,
-        " ".join(requirements.technical_requirements),
-    ]).strip()
-    if not query_text:
+    if not query_text.strip():
         return []
 
     query_embedding = embed_query(query_text)
-    categories = await get_active_categories(db)
+    chunks = query_chunks(query_embedding, top_k=CHUNK_POOL_SIZE)
+
+    # Keep each document's single highest-scoring chunk — chunks come back
+    # sorted by score descending, so the first hit per document_id is its best.
+    best_chunk_by_document: dict[int, dict] = {}
+    for chunk in chunks:
+        document_id = chunk["document_id"]
+        if document_id not in best_chunk_by_document:
+            best_chunk_by_document[document_id] = chunk
+
+    documents = await get_knowledge_documents_by_ids(db, list(best_chunk_by_document.keys()))
+    title_by_document_id = {document.id: document.title for document in documents}
 
     matches = [
-        {"category_id": category.id, "category_name": category.name, "match_percent": round(score * 100)}
-        for category in categories
-        for score in [category_match_score(query_embedding, category.id)]
-        if score > 0
+        {
+            "document_id": document_id,
+            "title": title_by_document_id.get(document_id, chunk["source_filename"]),
+            "source_filename": chunk["source_filename"],
+            "breadcrumb": chunk["breadcrumb"],
+            "match_percent": round(chunk["score"] * 100),
+        }
+        for document_id, chunk in best_chunk_by_document.items()
     ]
     matches.sort(key=lambda m: m["match_percent"], reverse=True)
-    return matches[:TOP_CATEGORY_MATCHES]
+    return matches[:TOP_DOCUMENT_MATCHES]
 
 
 async def process_requirement_document(document_id: int) -> None:

@@ -72,6 +72,19 @@ async def get_knowledge_document_by_id(db: AsyncSession, document_id: int) -> Kn
     return result.scalars().first()
 
 
+async def get_knowledge_documents_by_ids(
+    db: AsyncSession, document_ids: list[int]
+) -> list[KnowledgeDocument]:
+    if not document_ids:
+        return []
+    result = await db.execute(
+        select(KnowledgeDocument).filter(
+            KnowledgeDocument.id.in_(document_ids), KnowledgeDocument.is_active.is_(True)
+        )
+    )
+    return list(result.scalars().all())
+
+
 def build_knowledge_documents_query(
     category_id: Optional[int] = None,
     search: Optional[str] = None,
@@ -161,6 +174,20 @@ async def get_proposal_by_id(db: AsyncSession, proposal_id: int) -> Proposal | N
     result = await db.execute(
         select(Proposal)
         .filter(Proposal.id == proposal_id, Proposal.is_active.is_(True))
+    )
+    return result.scalars().first()
+
+
+async def get_proposal_by_requirement_document_id(
+    db: AsyncSession, requirement_document_id: int
+) -> Proposal | None:
+    result = await db.execute(
+        select(Proposal)
+        .filter(
+            Proposal.requirement_document_id == requirement_document_id,
+            Proposal.is_active.is_(True),
+        )
+        .order_by(Proposal.created_at.desc())
     )
     return result.scalars().first()
 

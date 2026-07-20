@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +10,9 @@ from database.crud import (
     create_proposal,
     create_requirement_document,
     get_proposal_by_id,
+    get_proposal_by_requirement_document_id,
     get_requirement_document_by_id,
+    update_proposal,
 )
 from database.database import get_db
 from database.db_enum import DocumentStatus, ProposalStatus
@@ -30,14 +33,19 @@ router = APIRouter(
 )
 
 
-def _requirement_document_response(document: RequirementDocument) -> RequirementDocumentResponse:
+def _requirement_document_response(
+    document: RequirementDocument, proposal: Proposal
+) -> RequirementDocumentResponse:
     return RequirementDocumentResponse(
         id=document.id,
+        proposal_id=proposal.id,
         file_name=document.file_name,
         extension=document.extension,
         user_id=document.user_id,
+        proposal_name=proposal.title,
+        client_name=proposal.client_name,
+        additional_context=proposal.additional_context,
         status=document.status,
-        parsed_data=document.parsed_data,
         summary=document.summary,
         knowledge_matches=document.knowledge_matches or [],
         created_at=document.created_at,
@@ -45,8 +53,8 @@ def _requirement_document_response(document: RequirementDocument) -> Requirement
 
 
 # ------------------------------------------------------------------
-# Requirement documents (upload -> extract/parse/summarize/match, all
-# returned synchronously in this same response)
+# Requirement documents (upload -> extract/summarize/match, all returned
+# synchronously in this same response)
 # ------------------------------------------------------------------
 
 @router.post(
@@ -56,13 +64,18 @@ def _requirement_document_response(document: RequirementDocument) -> Requirement
 )
 async def upload_requirement_document(
     file: UploadFile = File(...),
+    proposal_name: str = Form(...),
+    client_name: str = Form(...),
+    additional_context: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Uploads to S3, then fetches it back from S3 and runs the full pipeline
-    (extract -> structured parse -> summary -> knowledge-base match scoring)
-    synchronously, so the caller gets the summary and matches back here
-    directly instead of polling a separate status endpoint."""
+    """Uploads to S3, then fetches it back from S3 and runs the pipeline
+    (extract -> summary -> knowledge-base match scoring) synchronously, so
+    the caller gets the summary and matches back here directly instead of
+    polling a separate status endpoint. Also creates the Proposal row up
+    front (title/client_name/additional_context), which the later
+    /generate call will draft into."""
 
     user_id = current_user["user_id"]
     extension = Path(file.filename or "").suffix.lstrip(".").lower()
@@ -86,7 +99,18 @@ async def upload_requirement_document(
     document = await create_requirement_document(db, document)
     logger.info("requirement document created | document_id=%s", document.id)
 
-    document = await process_requirement_document_pipeline(db, document)
+    proposal = Proposal(
+        requirement_document_id=document.id,
+        user_id=user_id,
+        title=proposal_name,
+        client_name=client_name,
+        additional_context=additional_context,
+        status=ProposalStatus.INPROGRESS,
+    )
+    proposal = await create_proposal(db, proposal)
+    logger.info("proposal created | proposal_id=%s document_id=%s", proposal.id, document.id)
+
+    document = await process_requirement_document_pipeline(db, document, additional_context=additional_context)
 
     if document.status == DocumentStatus.FAILED:
         raise HTTPException(
@@ -94,7 +118,7 @@ async def upload_requirement_document(
             detail="Failed to process requirement document — see server logs for details.",
         )
 
-    return _requirement_document_response(document)
+    return _requirement_document_response(document, proposal)
 
 
 @router.get("/requirement-documents/{document_id}", response_model=RequirementDocumentResponse)
@@ -105,7 +129,12 @@ async def get_requirement_document(
     document = await get_requirement_document_by_id(db, document_id)
     if document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement document not found")
-    return _requirement_document_response(document)
+
+    proposal = await get_proposal_by_requirement_document_id(db, document_id)
+    if proposal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found for this document")
+
+    return _requirement_document_response(document, proposal)
 
 
 # ------------------------------------------------------------------
@@ -130,15 +159,15 @@ async def generate_proposal_endpoint(
     if requirement_document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement document not found")
 
-    proposal = Proposal(
-        requirement_document_id=request.requirement_document_id,
-        user_id=user_id,
-        title=f"Proposal — {requirement_document.file_name}",
-        status=ProposalStatus.GENERATING,
-    )
-    proposal = await create_proposal(db, proposal)
+    proposal = await get_proposal_by_requirement_document_id(db, request.requirement_document_id)
+    if proposal is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No proposal found for this requirement document — upload it via /requirement-documents first.",
+        )
+    proposal = await update_proposal(db, proposal, status=ProposalStatus.GENERATING)
     logger.info(
-        "proposal created | proposal_id=%s requirement_document_id=%s",
+        "proposal generation started | proposal_id=%s requirement_document_id=%s",
         proposal.id, request.requirement_document_id,
     )
 

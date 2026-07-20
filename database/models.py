@@ -134,8 +134,10 @@ class Proposal(BasicModel):
     )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    client_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    additional_context: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[ProposalStatus] = mapped_column(
-        SAEnum(ProposalStatus), nullable=False, default=ProposalStatus.DRAFT
+        SAEnum(ProposalStatus), nullable=False, default=ProposalStatus.INPROGRESS
     )
     markdown_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     docx_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

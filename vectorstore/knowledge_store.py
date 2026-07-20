@@ -86,12 +86,3 @@ def query_chunks(
         }
         for match in response.get("matches", [])
     ]
-
-
-def category_match_score(query_embedding: list[float], category_id: int) -> float:
-    """Top single-match similarity score for a category, used to render a
-    per-category "knowledge match" percentage (0.0 if the category has no
-    indexed chunks at all, rather than erroring)."""
-
-    matches = query_chunks(query_embedding, top_k=1, category_ids=[category_id])
-    return matches[0]["score"] if matches else 0.0

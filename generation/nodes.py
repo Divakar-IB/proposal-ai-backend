@@ -256,7 +256,7 @@ async def compile_proposal(state: ProposalGenerationState) -> ProposalGeneration
         await update_proposal(
             db, proposal,
             markdown_path=s3_key,
-            status=ProposalStatus.REVIEW if all_approved else ProposalStatus.DRAFT,
+            status=ProposalStatus.REVIEW if all_approved else ProposalStatus.INPROGRESS,
         )
 
     return state
