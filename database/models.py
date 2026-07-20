@@ -117,6 +117,8 @@ class RequirementDocument(BasicModel):
     )
     extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     parsed_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    knowledge_matches: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
 
     uploader: Mapped["User"] = relationship(back_populates="requirement_documents")
     proposals: Mapped[list["Proposal"]] = relationship(back_populates="requirement_document")

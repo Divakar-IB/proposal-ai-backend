@@ -41,12 +41,23 @@ class PineconeConfig(BaseModel):
     cloud: str = "aws"
     region: str = "us-east-1"
 
-class NovitaConfig(BaseModel):
+class GroqConfig(BaseModel):
     api_key: str
-    chat_base_url: str = "https://api.novita.ai/openai"
-    embedding_base_url: str = "https://api.novita.ai/v3/openai"
-    embedding_model: str = "baai/bge-m3"
+    base_url: str = "https://api.groq.com/openai/v1"
     llm_model: str = "openai/gpt-oss-120b"
+
+class HFInferenceConfig(BaseModel):
+    api_token: str
+    embedding_model: str
+    hf_base_api_url: str
+
+    @property
+    def embedding_api_url(self) -> str:
+
+        return (
+            f"{self.hf_base_api_url.rstrip('/')}/"
+            f"{self.embedding_model}/pipeline/feature-extraction"
+        )
 
 class RedisConfig(BaseModel):
     host: str = "localhost"
@@ -58,7 +69,8 @@ class AppConfig(BaseSettings):
     jwt: JWTConfig
     aws: AWSConfig
     pinecone: PineconeConfig
-    novita: NovitaConfig
+    groq: GroqConfig
+    hf_inference: HFInferenceConfig
     redis: RedisConfig = RedisConfig()
     debug: bool = False
     allowed_origins: List[str] = Field(default_factory=list)

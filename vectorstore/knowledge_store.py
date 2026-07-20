@@ -1,6 +1,8 @@
 from typing import Optional
 from uuid import uuid4
 
+from pinecone.errors.exceptions import NotFoundError
+
 from chunking.models import Chunk
 from vectorstore.pinecone_client import PineconeService
 
@@ -45,10 +47,14 @@ def upsert_chunks(
 
 
 def delete_document_vectors(document_id: int) -> None:
-    """Removes all vectors for a document (e.g. before re-processing a new version)."""
+    """Removes all vectors for a document (e.g. before re-processing a new version).
+    No-ops if the namespace doesn't exist yet (first-ever upload for this index)."""
 
     index = PineconeService.get_index()
-    index.delete(filter={"document_id": document_id})
+    try:
+        index.delete(filter={"document_id": document_id})
+    except NotFoundError:
+        pass
 
 
 def query_chunks(
@@ -80,3 +86,12 @@ def query_chunks(
         }
         for match in response.get("matches", [])
     ]
+
+
+def category_match_score(query_embedding: list[float], category_id: int) -> float:
+    """Top single-match similarity score for a category, used to render a
+    per-category "knowledge match" percentage (0.0 if the category has no
+    indexed chunks at all, rather than erroring)."""
+
+    matches = query_chunks(query_embedding, top_k=1, category_ids=[category_id])
+    return matches[0]["score"] if matches else 0.0

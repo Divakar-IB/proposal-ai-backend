@@ -11,7 +11,6 @@ from router.auth_router import router as auth_router
 from router import category
 from router import documents
 from router import proposals
-from router import requirements
 
 
 @asynccontextmanager
@@ -34,7 +33,6 @@ setup_middleware(app)
 app.include_router(auth_router)
 app.include_router(category.router)
 app.include_router(documents.router)
-app.include_router(requirements.router)
 app.include_router(proposals.router)
 
 @app.get("/")

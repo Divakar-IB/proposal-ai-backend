@@ -6,6 +6,7 @@ from sqlalchemy.sql import Select
 
 from database.db_enum import DocumentAvailability
 from database.models import (
+    Category,
     KnowledgeChunk,
     KnowledgeDocument,
     Proposal,
@@ -13,6 +14,19 @@ from database.models import (
     RequirementDocument,
     User,
 )
+
+
+async def get_active_categories(db: AsyncSession) -> list[Category]:
+    result = await db.execute(select(Category).filter(Category.is_active.is_(True)))
+    return list(result.scalars().all())
+
+
+async def has_any_knowledge_chunks(db: AsyncSession) -> bool:
+    """Cheap existence check — lets callers skip embedding/Pinecone calls
+    entirely when nothing has been indexed yet, rather than querying an
+    empty (or not-yet-created) index and handling it after the fact."""
+    result = await db.execute(select(KnowledgeChunk.id).limit(1))
+    return result.scalars().first() is not None
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:

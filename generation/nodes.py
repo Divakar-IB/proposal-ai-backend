@@ -4,14 +4,14 @@ from database.crud import (
     create_proposal_sections,
     get_proposal_by_id,
     get_requirement_document_by_id,
+    has_any_knowledge_chunks,
     update_proposal,
     update_requirement_document,
 )
 from database.database import db_session
 from database.db_enum import DocumentStatus, ProposalSectionStatus, ProposalStatus
-from database.models import ProposalSection, RequirementDocument
+from database.models import ProposalSection
 from embedding.embedder import embed_query
-from extraction.factory import run_extraction
 from generation.prompts import (
     DRAFT_SYSTEM_PROMPT,
     DRAFT_USER_TEMPLATE,
@@ -22,8 +22,8 @@ from generation.prompts import (
 from generation.schema import QualityCheckResult
 from generation.sections import SECTION_DEFINITIONS
 from generation.state import ProposalGenerationState
-from llm.chat_client import NovitaChatClient
-from requirements_parsing.parser import parse_requirements as run_requirements_parser
+from llm.chat_client import GroqChatClient
+from tasks.requirement_processing import process_requirement_document_pipeline
 from utilities.logger import get_logger
 from utilities.s3_service import S3Service
 from vectorstore.knowledge_store import query_chunks
@@ -57,9 +57,10 @@ async def parse_requirements(state: ProposalGenerationState) -> ProposalGenerati
 
         if not document.parsed_data:
             logger.info("requirement document not yet parsed, running Path B inline | document_id=%s", document_id)
-            requirements = await _run_path_b(db, document)
-        else:
-            requirements = document.parsed_data
+            document = await process_requirement_document_pipeline(db, document)
+            if document.status != DocumentStatus.PARSED:
+                return {**state, "error": f"requirement document {document_id} failed to parse"}
+        requirements = document.parsed_data
 
     sections = [
         {
@@ -79,24 +80,6 @@ async def parse_requirements(state: ProposalGenerationState) -> ProposalGenerati
     return {**state, "requirements": requirements, "sections": sections}
 
 
-async def _run_path_b(db, document: RequirementDocument) -> dict:
-    temp_path = s3_service.download_to_tempfile(document.file_path, suffix=f".{document.extension}")
-    try:
-        extracted = run_extraction(temp_path, document.file_name, document.extension)
-        requirements_schema = run_requirements_parser(extracted.markdown)
-        requirements = requirements_schema.model_dump()
-        await update_requirement_document(
-            db, document,
-            extracted_markdown=extracted.markdown,
-            parsed_data=requirements,
-            status=DocumentStatus.PARSED,
-        )
-        return requirements
-    finally:
-        from pathlib import Path
-        Path(temp_path).unlink(missing_ok=True)
-
-
 # ------------------------------------------------------------------
 # Node 2: retrieve_context
 # ------------------------------------------------------------------
@@ -104,9 +87,20 @@ async def _run_path_b(db, document: RequirementDocument) -> dict:
 async def retrieve_context(state: ProposalGenerationState) -> ProposalGenerationState:
     requirements = state["requirements"]
     category_ids = state.get("category_ids")
-    updated_sections = []
 
+    # No knowledge documents indexed yet — skip embedding/Pinecone entirely and
+    # let draft_section fall back to general-best-practice drafting (its
+    # prompt already handles an empty retrieved_chunks list as the expected
+    # no-knowledge-base case, not an error).
+    async with db_session() as db:
+        has_knowledge = await has_any_knowledge_chunks(db)
+
+    updated_sections = []
     for section in state["sections"]:
+        if not has_knowledge:
+            updated_sections.append({**section, "retrieved_chunks": []})
+            continue
+
         query_text = _build_query_text(section, requirements)
         query_embedding = embed_query(query_text)
         chunks = query_chunks(query_embedding, top_k=TOP_K_CHUNKS_PER_SECTION, category_ids=category_ids)
@@ -148,7 +142,7 @@ async def draft_section(state: ProposalGenerationState) -> ProposalGenerationSta
             feedback=section["feedback"] or "(none — first draft)",
         )
 
-        response = NovitaChatClient.complete(
+        response = GroqChatClient.complete(
             messages=[
                 {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -199,7 +193,7 @@ async def quality_check(state: ProposalGenerationState) -> ProposalGenerationSta
             content=section["content"],
         )
 
-        response = NovitaChatClient.complete(
+        response = GroqChatClient.complete(
             messages=[
                 {"role": "system", "content": QUALITY_CHECK_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
