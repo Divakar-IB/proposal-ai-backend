@@ -114,8 +114,10 @@ async def stream_proposal_generation(
                 "title": section["title"],
                 "status": section["status"],
                 "content": section.get("content"),
-                "citations": section.get("citations"),
+                "sources": section.get("citations"),
                 "feedback": section.get("feedback"),
+                "confidence_score": section.get("confidence_score"),
+                "review_flag": section.get("review_flag", False),
             })
 
     if final_state.get("error"):

@@ -14,6 +14,8 @@ from database.db_enum import DocumentStatus
 from database.models import RequirementDocument
 from embedding.embedder import embed_query
 from extraction.factory import run_extraction
+from requirements_parsing.capability_classifier import classify_capabilities
+from requirements_parsing.parser import parse_requirements
 from requirements_parsing.summary import summarize_requirements
 from utilities.logger import get_logger
 from utilities.s3_service import S3Service
@@ -30,8 +32,13 @@ async def process_requirement_document_pipeline(
     db: AsyncSession, document: RequirementDocument, additional_context: Optional[str] = None
 ) -> RequirementDocument:
     """
-    extract -> summary (GPT-OSS via Groq) -> per-document knowledge-match
-    scoring (using the summary as the query text) -> Postgres storage.
+    extract -> structured requirement extraction (GPT-OSS via Groq) -> capability
+    classification -> summary -> per-document knowledge-match scoring (using the
+    summary as the query text) -> Postgres storage.
+
+    Structured requirements and capability tags are the metadata the rest of the
+    pipeline (retrieval, section drafting) depends on — everything downstream reuses
+    this structured JSON instead of re-sending the raw document text.
 
     Shared core used both by the upload endpoint (awaited synchronously, so
     the caller gets the summary/matches back in the same response) and by
@@ -51,7 +58,13 @@ async def process_requirement_document_pipeline(
             document_id, len(extracted.markdown), len(extracted.pages),
         )
 
-        summary = summarize_requirements(extracted.markdown, additional_context=additional_context)
+        requirements = parse_requirements(extracted.markdown, additional_context=additional_context)
+        requirements_dict = requirements.model_dump()
+        logger.info("requirements extracted | document_id=%s", document_id)
+
+        capability_tags = await _classify_capabilities_safely(document_id, requirements_dict)
+
+        summary = summarize_requirements(requirements_dict, additional_context=additional_context)
         logger.info("summary generated | document_id=%s", document_id)
 
         knowledge_matches = await _compute_knowledge_matches(db, summary)
@@ -60,6 +73,8 @@ async def process_requirement_document_pipeline(
         document = await update_requirement_document(
             db, document,
             extracted_markdown=extracted.markdown,
+            parsed_data=requirements_dict,
+            capability_tags=capability_tags,
             summary=summary,
             knowledge_matches=knowledge_matches,
             status=DocumentStatus.PARSED,
@@ -75,6 +90,18 @@ async def process_requirement_document_pipeline(
         if temp_path:
             Path(temp_path).unlink(missing_ok=True)
             logger.info("temp file cleaned up | document_id=%s path=%s", document_id, temp_path)
+
+
+async def _classify_capabilities_safely(document_id: int, requirements_dict: dict) -> list[dict]:
+    """Capability tagging is enrichment metadata, not a blocking step — a
+    classification failure degrades to an empty tag list instead of failing
+    the whole document (unlike requirement extraction, which is fatal)."""
+    try:
+        classification = classify_capabilities(requirements_dict)
+        return [tag.model_dump() for tag in classification.tags]
+    except Exception:
+        logger.exception("capability classification failed, continuing with no tags | document_id=%s", document_id)
+        return []
 
 
 async def _compute_knowledge_matches(db: AsyncSession, query_text: str) -> list[dict]:

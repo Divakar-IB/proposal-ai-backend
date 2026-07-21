@@ -119,6 +119,7 @@ class RequirementDocument(BasicModel):
     )
     extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     parsed_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    capability_tags: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     knowledge_matches: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
 
@@ -142,6 +143,7 @@ class Proposal(BasicModel):
     markdown_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     docx_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category_ids: Mapped[Optional[list[int]]] = mapped_column(ARRAY(Integer), nullable=True)
 
     requirement_document: Mapped["RequirementDocument"] = relationship(back_populates="proposals")
     sections: Mapped[list["ProposalSection"]] = relationship(
@@ -164,5 +166,7 @@ class ProposalSection(BasicModel):
         SAEnum(ProposalSectionStatus), nullable=False, default=ProposalSectionStatus.PENDING
     )
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    confidence_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    review_flag: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     proposal: Mapped["Proposal"] = relationship(back_populates="sections")

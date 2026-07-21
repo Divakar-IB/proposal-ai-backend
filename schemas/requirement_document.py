@@ -14,6 +14,11 @@ class KnowledgeMatch(BaseModel):
     match_percent: int
 
 
+class CapabilityTagOut(BaseModel):
+    name: str
+    confidence: float
+
+
 class RequirementDocumentResponse(BaseModel):
     id: int
     proposal_id: int
@@ -26,6 +31,7 @@ class RequirementDocumentResponse(BaseModel):
     status: DocumentStatus
     summary: Optional[str] = None
     knowledge_matches: list[KnowledgeMatch] = []
+    capability_tags: list[CapabilityTagOut] = []
     created_at: datetime
 
     class Config:

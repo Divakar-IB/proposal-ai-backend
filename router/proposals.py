@@ -9,6 +9,7 @@ from authentication.dependency import get_current_user
 from database.crud import (
     create_proposal,
     create_requirement_document,
+    get_categories_by_names,
     get_proposal_by_id,
     get_proposal_by_requirement_document_id,
     get_requirement_document_by_id,
@@ -16,10 +17,16 @@ from database.crud import (
 )
 from database.database import get_db
 from database.db_enum import DocumentStatus, ProposalStatus
-from database.models import Proposal, RequirementDocument
+from database.models import Proposal, ProposalSection, RequirementDocument
 from generation.graph import stream_proposal_generation
-from schemas.proposal import ProposalGenerateRequest, ProposalResponse
+from schemas.proposal import (
+    ProposalGenerateRequest,
+    ProposalResponse,
+    ProposalSectionResponse,
+    SectionEditRequest,
+)
 from schemas.requirement_document import RequirementDocumentResponse
+from services import proposal_review_service
 from tasks.requirement_processing import process_requirement_document_pipeline
 from utilities.logger import get_logger
 from utilities.s3_service import S3PathBuilder, S3Service
@@ -48,7 +55,36 @@ def _requirement_document_response(
         status=document.status,
         summary=document.summary,
         knowledge_matches=document.knowledge_matches or [],
+        capability_tags=document.capability_tags or [],
         created_at=document.created_at,
+    )
+
+
+def _proposal_section_response(section: ProposalSection) -> ProposalSectionResponse:
+    return ProposalSectionResponse(
+        id=section.id,
+        section_key=section.section_key,
+        order_index=section.order_index,
+        content=section.content,
+        sources=section.citations,
+        status=section.status,
+        confidence_score=section.confidence_score,
+        review_flag=section.review_flag,
+    )
+
+
+def _proposal_response(proposal: Proposal) -> ProposalResponse:
+    return ProposalResponse(
+        id=proposal.id,
+        requirement_document_id=proposal.requirement_document_id,
+        user_id=proposal.user_id,
+        title=proposal.title,
+        status=proposal.status,
+        markdown_path=proposal.markdown_path,
+        docx_path=proposal.docx_path,
+        error_message=proposal.error_message,
+        sections=[_proposal_section_response(section) for section in proposal.sections],
+        created_at=proposal.created_at,
     )
 
 
@@ -165,10 +201,23 @@ async def generate_proposal_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No proposal found for this requirement document — upload it via /requirement-documents first.",
         )
-    proposal = await update_proposal(db, proposal, status=ProposalStatus.GENERATING)
+
+    # Pass the hidden step's capability tags directly to generation when the
+    # caller doesn't explicitly scope retrieval themselves. Resolved once here
+    # (not per-section) and persisted onto the Proposal row so a later
+    # "regenerate one section" call can reuse the same knowledge-base scope.
+    category_ids = request.category_ids
+    if not category_ids and requirement_document.capability_tags:
+        tag_names = [tag["name"] for tag in requirement_document.capability_tags]
+        categories = await get_categories_by_names(db, tag_names)
+        category_ids = [category.id for category in categories] or None
+
+    proposal = await update_proposal(
+        db, proposal, status=ProposalStatus.GENERATING, category_ids=category_ids
+    )
     logger.info(
-        "proposal generation started | proposal_id=%s requirement_document_id=%s",
-        proposal.id, request.requirement_document_id,
+        "proposal generation started | proposal_id=%s requirement_document_id=%s category_ids=%s",
+        proposal.id, request.requirement_document_id, category_ids,
     )
 
     return StreamingResponse(
@@ -176,7 +225,7 @@ async def generate_proposal_endpoint(
             requirement_document_id=request.requirement_document_id,
             proposal_id=proposal.id,
             user_id=user_id,
-            category_ids=request.category_ids,
+            category_ids=category_ids,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -191,4 +240,46 @@ async def get_proposal(
     proposal = await get_proposal_by_id(db, proposal_id)
     if proposal is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
-    return proposal
+    return _proposal_response(proposal)
+
+
+# ------------------------------------------------------------------
+# Review & Refine — per-section edit / regenerate / approve
+# ------------------------------------------------------------------
+
+@router.patch("/sections/{section_id}", response_model=ProposalSectionResponse)
+async def edit_proposal_section(
+    section_id: int,
+    request: SectionEditRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Manual edit of a section's content — leaves status/review_flag as-is;
+    approving is a separate explicit action below."""
+
+    section = await proposal_review_service.edit_section(db, section_id, request)
+    return _proposal_section_response(section)
+
+
+@router.post("/sections/{section_id}/regenerate", response_model=ProposalSectionResponse)
+async def regenerate_proposal_section(
+    section_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """One fresh draft + quality-check pass for a single section — reuses the
+    same knowledge-base scope (Proposal.category_ids) and structured
+    requirements the original generation run used."""
+
+    section = await proposal_review_service.regenerate_section(db, section_id)
+    return _proposal_section_response(section)
+
+
+@router.post("/sections/{section_id}/approve", response_model=ProposalSectionResponse)
+async def approve_proposal_section(
+    section_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    section = await proposal_review_service.approve_section(db, section_id)
+    return _proposal_section_response(section)

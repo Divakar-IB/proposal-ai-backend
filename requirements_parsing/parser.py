@@ -1,9 +1,11 @@
 import json
+from typing import Optional
 
 from openai import APIStatusError
 from pydantic import ValidationError
 
 from llm.chat_client import GroqChatClient
+from prompts.requirement_extraction import EXTRACT_TOOL, SYSTEM_PROMPT, TOOL_NAME
 from requirements_parsing.schema import RequirementsSchema
 from utilities.logger import get_logger
 
@@ -11,34 +13,18 @@ logger = get_logger(__name__)
 
 MAX_REPAIR_ATTEMPTS = 3
 
-_TOOL_NAME = "extract_requirements"
 
-_SYSTEM_PROMPT = (
-    "You are a requirements analyst. Read the requirement/RFP document below and extract "
-    "a structured summary by calling the extract_requirements tool. Only use information "
-    "present in the document — never invent values.\n"
-    "For fields with nothing found: string fields (project_title, scope, budget_range, "
-    "timeline) may be left null, but array fields (deliverables, technical_requirements, "
-    "evaluation_criteria, constraints) MUST be an empty array [] — never null for an array field."
-)
-
-_EXTRACT_TOOL = {
-    "type": "function",
-    "function": {
-        "name": _TOOL_NAME,
-        "description": "Extract structured requirements from an RFP/requirement document.",
-        "parameters": RequirementsSchema.model_json_schema(),
-    },
-}
-
-
-def parse_requirements(markdown: str) -> RequirementsSchema:
+def parse_requirements(markdown: str, additional_context: Optional[str] = None) -> RequirementsSchema:
     """GPT-OSS (via Groq) structured extraction, validated against RequirementsSchema.
     Retries with the validation error fed back as a repair instruction on failure."""
 
+    user_content = markdown
+    if additional_context:
+        user_content = f"{markdown}\n\nAdditional context from the submitter:\n{additional_context}"
+
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": markdown},
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_content},
     ]
 
     last_error: Exception | None = None
@@ -46,8 +32,8 @@ def parse_requirements(markdown: str) -> RequirementsSchema:
         try:
             response = GroqChatClient.complete(
                 messages=messages,
-                tools=[_EXTRACT_TOOL],
-                tool_choice={"type": "function", "function": {"name": _TOOL_NAME}},
+                tools=[EXTRACT_TOOL],
+                tool_choice={"type": "function", "function": {"name": TOOL_NAME}},
             )
         except APIStatusError as error:
             # The provider itself validates tool-call arguments against the schema
