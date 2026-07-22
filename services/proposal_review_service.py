@@ -14,7 +14,7 @@ from database.crud import (
 )
 from database.db_enum import ProposalSectionStatus, ProposalStatus
 from database.models import Proposal, ProposalSection
-from generation.markdown_sections import assemble_markdown
+from generation.markdown_sections import assemble_markdown, markdown_to_json
 from generation.nodes import decide_section_status, draft_one_section, retrieve_chunks_for_section, run_quality_check
 from generation.requirement_context import build_combined_requirements_json
 from generation.sections import SECTION_DEFINITIONS
@@ -172,7 +172,10 @@ async def approve_proposal(db: AsyncSession, proposal_id: int) -> Proposal:
     this moment, including any manual edits made during review — is
     snapshotted onto Proposal.approved_markdown right here, so export
     always has a fixed, already-approved source to render from instead of
-    re-reading mutable section rows."""
+    re-reading mutable section rows. The same Markdown is also parsed into
+    Proposal.proposal_json. Both snapshots (and is_approved) are refreshed
+    on every call, including re-approval of an already-approved proposal,
+    so they always reflect the latest edited content."""
 
     proposal = await get_proposal_by_id(db, proposal_id)
     if proposal is None:
@@ -202,10 +205,13 @@ async def approve_proposal(db: AsyncSession, proposal_id: int) -> Proposal:
         {"title": section.title, "content": section.content, "order_index": section.order_index}
         for section in proposal.sections
     ])
+    proposal_json = markdown_to_json(approved_markdown)
 
     logger.info("proposal approved | proposal_id=%s", proposal_id)
     return await update_proposal(
         db, proposal,
         status=ProposalStatus.APPROVED,
         approved_markdown=approved_markdown,
+        proposal_json=proposal_json,
+        is_approved=True,
     )

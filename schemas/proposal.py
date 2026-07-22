@@ -47,7 +47,9 @@ class ProposalResponse(BaseModel):
     page_count: Optional[int] = None
     status: ProposalStatus
     markdown_path: Optional[str] = None
+    is_approved: bool = False
     approved_markdown: Optional[str] = None
+    proposal_json: Optional[dict[str, Any]] = None
     docx_path: Optional[str] = None
     pdf_path: Optional[str] = None
     error_message: Optional[str] = None

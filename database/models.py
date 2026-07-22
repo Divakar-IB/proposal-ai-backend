@@ -147,6 +147,7 @@ class Proposal(BasicModel):
     markdown_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_approved: Mapped[bool] = mapped_column(nullable=False, default=False)
     approved_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    proposal_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     docx_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     pdf_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

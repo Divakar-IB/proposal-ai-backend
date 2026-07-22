@@ -49,3 +49,19 @@ def assemble_markdown(proposal_title: str, sections: list[dict]) -> str:
     ordered = sorted(sections, key=lambda section: section.get("order_index", 0))
     body = "\n\n".join(f"## {section['title']}\n\n{section['content'] or ''}".rstrip() for section in ordered)
     return f"# {proposal_title}\n\n{body}\n"
+
+
+_H1_PATTERN = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
+
+
+def markdown_to_json(markdown: str) -> dict:
+    """Parses canonical proposal Markdown (as produced by assemble_markdown)
+    into the structured JSON snapshot shape — reuses split_into_sections so
+    the same heading-parsing logic backs both the DB section rows and this
+    snapshot, keeping the two representations always in sync."""
+
+    title_match = _H1_PATTERN.search(markdown)
+    return {
+        "title": title_match.group(1).strip() if title_match else "",
+        "sections": split_into_sections(markdown),
+    }
