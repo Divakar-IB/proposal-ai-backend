@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Code Changes — Proposal Generator Streamlit App</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 960px; margin: 2.5rem auto; padding: 0 1.5rem; line-height: 1.6; }
+  h1 { font-size: 1.8rem; margin-bottom: 0.2rem; }
+  h2 { margin-top: 2.2rem; border-bottom: 1px solid #8884; padding-bottom: 0.3rem; }
+  .sub { color: #888; margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
+  th, td { border: 1px solid #8884; padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
+  th { background: #80808014; }
+  code { background: #80808020; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<h1>Code Changes</h1>
+<p class="sub">Exact files touched, and why</p>
+
+<h2>Backend files modified (existing repo)</h2>
+<table>
+<tr><th>File</th><th>Change</th><th>Reused vs new</th></tr>
+<tr>
+  <td><code>database/crud.py</code></td>
+  <td>Added <code>build_proposals_query()</code> — a query builder following the exact pattern of the existing <code>build_knowledge_documents_query()</code></td>
+  <td>New function; reuses the existing <code>paginate()</code> helper unchanged</td>
+</tr>
+<tr>
+  <td><code>schemas/proposal.py</code></td>
+  <td>Added <code>ProposalListItem</code> and <code>ProposalListResponse</code> models</td>
+  <td>New schemas; same shape convention as <code>DocumentListResponse</code></td>
+</tr>
+<tr>
+  <td><code>router/proposals.py</code></td>
+  <td>Added <code>GET /proposals</code> (list, paginated, filterable by <code>client_name</code>/<code>status</code>) and its <code>_proposal_list_item()</code> serializer</td>
+  <td>New endpoint; every other endpoint in this file is untouched and reused as-is</td>
+</tr>
+<tr>
+  <td><code>schemas/requirement_document.py</code></td>
+  <td>Added <code>parsed_requirements: Optional[RequirementsSchema]</code> to <code>RequirementDocumentResponse</code></td>
+  <td>Exposes an existing DB column (<code>RequirementDocument.parsed_data</code>) that was already computed by the pipeline but never returned to API callers</td>
+</tr>
+<tr>
+  <td><code>router/proposals.py</code> (same file as above)</td>
+  <td>One-line addition in <code>_requirement_document_response()</code>: <code>parsed_requirements=document.parsed_data</code></td>
+  <td>Wires the new field through; no pipeline logic changed</td>
+</tr>
+</table>
+<p><strong>Nothing else in the backend was modified.</strong> No rewritten logic, no changed signatures on existing functions, no touched migrations, models, services, or generation pipeline.</p>
+
+<h2>New: streamlit_app/ (entire directory)</h2>
+<table>
+<tr><th>File</th><th>Purpose</th></tr>
+<tr><td><code>app.py</code></td><td>Entry point — page config, session-state init, theme injection, login gate, sidebar, and the workflow-stage router (upload → processing → review → export, plus dashboard)</td></tr>
+<tr><td><code>config/settings.py</code></td><td>API base URL/timeouts and app title/layout, loaded from environment (<code>.env</code>)</td></tr>
+<tr><td><code>services/api_client.py</code></td><td>Streamlit-agnostic HTTP client wrapping every backend endpoint used (auth, requirement-document upload, SSE generation, proposal fetch/list, section edit/regenerate/approve, categories, health). Raises a single <code>APIError</code> type for both HTTP-error and connection-failure cases</td></tr>
+<tr><td><code>services/auth.py</code></td><td>Session-state-aware login/logout/token-refresh, plus the cached API client singleton (<code>st.cache_resource</code>)</td></tr>
+<tr><td><code>components/login.py</code></td><td>Centered login form gate rendered before anything else</td></tr>
+<tr><td><code>components/sidebar.py</code></td><td>Current Workflow step tracker, Project Information, Proposal Progress, Recent Activities, System Status (live backend health check, cached 20s)</td></tr>
+<tr><td><code>views/upload.py</code></td><td>Step 1 — file upload + proposal/client name + description, inline validation, calls the real upload endpoint</td></tr>
+<tr><td><code>views/processing.py</code></td><td>Step 2 (hidden) — consumes the <code>/proposals/generate</code> SSE stream live: progress bar, per-section status cards, auto-transitions to Review on <code>done</code></td></tr>
+<tr><td><code>views/review.py</code></td><td>Step 3 — proposal summary, workflow status, statistics, confidence, requirements covered / missing information, review flags, and expandable per-section View/Edit/Regenerate/Approve cards</td></tr>
+<tr><td><code>views/export.py</code></td><td>Step 4 — placeholder UI only (disabled buttons), per the brief; no backend export endpoints exist</td></tr>
+<tr><td><code>views/dashboard.py</code></td><td>Recent proposals, search/status filter, stat tiles, open-to-review — backed by the new <code>GET /proposals</code></td></tr>
+<tr><td><code>utils/session.py</code></td><td>Central <code>st.session_state</code> defaults</td></tr>
+<tr><td><code>utils/formatting.py</code></td><td>Status-badge HTML, confidence color/label, relative-time formatting — shared across every page</td></tr>
+<tr><td><code>utils/activity.py</code></td><td>Session-scoped "Recent Activities" log used by the sidebar</td></tr>
+<tr><td><code>utils/styling.py</code></td><td>Injects <code>styles/theme.css</code> once per run</td></tr>
+<tr><td><code>styles/theme.css</code></td><td>Cards, stat tiles, step tracker, badges — theme-neutral (works in Streamlit light and dark mode)</td></tr>
+<tr><td><code>requirements.txt</code>, <code>.env.example</code></td><td>Frontend-only dependencies (streamlit, httpx, python-dotenv) and config template, kept separate from the backend's <code>requirements.txt</code></td></tr>
+</table>
+
+<h2>Existing backend reused as-is</h2>
+<ul>
+  <li><code>POST /auth/login</code>, <code>POST /auth/refresh</code></li>
+  <li><code>POST /proposals/requirement-documents</code>, <code>GET /proposals/requirement-documents/{id}</code></li>
+  <li><code>POST /proposals/generate</code> (SSE), <code>GET /proposals/{id}</code></li>
+  <li><code>PATCH /proposals/sections/{id}</code>, <code>POST /proposals/sections/{id}/regenerate</code>, <code>POST /proposals/sections/{id}/approve</code></li>
+  <li><code>GET /category/list</code> (available in the client for future use; not yet surfaced in the UI)</li>
+</ul>
+</body>
+</html>

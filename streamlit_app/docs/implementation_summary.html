@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Implementation Summary — Proposal Generator Streamlit App</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 920px; margin: 2.5rem auto; padding: 0 1.5rem; line-height: 1.6; }
+  h1 { font-size: 1.8rem; margin-bottom: 0.2rem; }
+  h2 { margin-top: 2.2rem; border-bottom: 1px solid #8884; padding-bottom: 0.3rem; }
+  .sub { color: #888; margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #8884; padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
+  th { background: #80808014; }
+  code { background: #80808020; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.9em; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:999px; font-size:0.78rem; font-weight:600; }
+  .done { background:#DCFCE7; color:#15803D; }
+  .partial { background:#FEF3C7; color:#B45309; }
+  .future { background:#F3F4F6; color:#6B7280; }
+</style>
+</head>
+<body>
+<h1>Implementation Summary</h1>
+<p class="sub">Proposal Generator — Streamlit frontend for the existing proposal-ai-backend FastAPI service</p>
+
+<h2>Overview</h2>
+<p>
+This adds a full Streamlit frontend (<code>streamlit_app/</code>) on top of the existing FastAPI backend
+without modifying any working backend logic. The only backend change is additive: a new
+<code>GET /proposals</code> list endpoint, needed because the backend previously only supported
+fetching a single proposal by id — nothing else in the backend was touched. Every other workflow
+step (upload, generation, review/refine) calls real, existing backend endpoints.
+</p>
+
+<h2>Before vs After</h2>
+<table>
+<tr><th></th><th>Before</th><th>After</th></tr>
+<tr>
+  <td>Frontend</td>
+  <td>None — API only, exercised via Swagger/curl</td>
+  <td>Full Streamlit app: login, upload, live generation progress, section-by-section review, export placeholders, dashboard</td>
+</tr>
+<tr>
+  <td>Proposal discovery</td>
+  <td>Only <code>GET /proposals/{id}</code> — no way to list proposals</td>
+  <td>New <code>GET /proposals</code> (paginated, filterable) backs a real Dashboard</td>
+</tr>
+<tr>
+  <td>Requirement document response</td>
+  <td><code>parsed_data</code> stored on the model but never returned to callers</td>
+  <td>Exposed as <code>parsed_requirements</code> on <code>RequirementDocumentResponse</code>, driving the Review page's Requirements Covered / Missing Information sections</td>
+</tr>
+<tr>
+  <td>Generation visibility</td>
+  <td>SSE stream existed but no client consumed it</td>
+  <td>Streamlit's hidden processing page consumes the stream live, updating a progress bar and per-section status list as each event arrives</td>
+</tr>
+</table>
+
+<h2>Screens implemented</h2>
+<table>
+<tr><th>Screen</th><th>Status</th><th>Notes</th></tr>
+<tr><td>Login</td><td><span class="badge done">Done</span></td><td>Real <code>/auth/login</code> call, token stored in session state, silent 401 refresh via <code>/auth/refresh</code></td></tr>
+<tr><td>Step 1 — Upload Requirements</td><td><span class="badge done">Done</span></td><td>Real upload to <code>/proposals/requirement-documents</code>; multi-file picker with validation, only one file processed per proposal (backend constraint, see architecture_decisions.md)</td></tr>
+<tr><td>Step 2 — Processing (hidden)</td><td><span class="badge done">Done</span></td><td>Never a nav destination. Consumes the real SSE stream from <code>/proposals/generate</code> live</td></tr>
+<tr><td>Step 3 — Review &amp; Refine</td><td><span class="badge done">Done</span></td><td>Proposal summary, workflow status, statistics, confidence, requirements covered, missing information, review flags, and per-section View/Edit/Regenerate/Approve — all wired to real endpoints</td></tr>
+<tr><td>Step 4 — Export</td><td><span class="badge partial">Placeholder (by design)</span></td><td>UI only, per the brief — no backend docx/pdf/ppt/email endpoints exist yet</td></tr>
+<tr><td>Dashboard</td><td><span class="badge done">Done</span></td><td>Backed by the new <code>GET /proposals</code> endpoint; search/status filter, stat tiles, open-to-review</td></tr>
+<tr><td>Sidebar</td><td><span class="badge done">Done</span></td><td>Current workflow step tracker, project info, progress, confidence, review status, recent activities, system health check</td></tr>
+</table>
+
+<h2>Future enhancements</h2>
+<ul>
+  <li>Wire Export to real backend endpoints once docx/pdf/ppt rendering and email-send exist.</li>
+  <li>Multi-document RFP intake — today's backend model is one file per proposal (1:1 <code>Proposal.requirement_document_id</code>); consolidating several source documents into one proposal would need backend pipeline changes, not just a frontend change.</li>
+  <li>Move SSE consumption off the main script thread (background thread + queue) so a page reconnect mid-generation doesn't require re-running the whole stream.</li>
+  <li>Role-based UI (the backend already has <code>org_admin</code>/<code>member</code> roles via <code>UserRole</code>) — e.g. hide admin-only actions for <code>member</code> users.</li>
+</ul>
+</body>
+</html>

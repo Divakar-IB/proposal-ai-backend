@@ -2,7 +2,20 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+<<<<<<< Updated upstream
 from database.models import User, UserSession
+=======
+from database.db_enum import DocumentAvailability, ProposalStatus
+from database.models import (
+    Category,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    Proposal,
+    ProposalSection,
+    RequirementDocument,
+    User,
+)
+>>>>>>> Stashed changes
 
 
 # ------------------------------------------------------------------
@@ -50,6 +63,30 @@ def get_user_session_by_refresh_token(db: Session, refresh_token: str) -> UserSe
         )
         .first()
     )
+<<<<<<< Updated upstream
+=======
+    return result.scalars().first()
+
+
+def build_proposals_query(
+    client_name: Optional[str] = None,
+    proposal_status: Optional[ProposalStatus] = None,
+) -> Select:
+    query = select(Proposal).filter(Proposal.is_active.is_(True))
+    if client_name:
+        query = query.filter(Proposal.client_name.ilike(f"%{client_name}%"))
+    if proposal_status is not None:
+        query = query.filter(Proposal.status == proposal_status)
+    return query.order_by(Proposal.created_at.desc())
+
+
+async def update_proposal(db: AsyncSession, proposal: Proposal, **fields) -> Proposal:
+    for key, value in fields.items():
+        setattr(proposal, key, value)
+    await db.commit()
+    await db.refresh(proposal)
+    return proposal
+>>>>>>> Stashed changes
 
 
 def update_refresh_token(db: Session, session: UserSession, refresh_token: str) -> UserSession:

@@ -11,7 +11,18 @@ engine = create_engine(
             pool_recycle=1800,
             max_overflow=20,
 
+<<<<<<< Updated upstream
         )
+=======
+DATABASE_URL = (
+    f"postgresql+asyncpg://"
+    f"{config.database.username}:{config.database.password}"
+    f"@{config.database.host}:{config.database.port}"
+    f"/{config.database.db_name}"
+    f"?ssl=require"
+    
+)
+>>>>>>> Stashed changes
 
 SessionLocal = scoped_session(sessionmaker(bind=engine,autoflush=False))
    

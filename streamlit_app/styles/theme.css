@@ -1,0 +1,89 @@
+/* Proposal Generator — shared visual language. Uses translucent surfaces
+   rather than hardcoded light backgrounds so it holds up in both Streamlit
+   light and dark themes without a separate dark stylesheet. */
+
+.app-card {
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 12px;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 0.9rem;
+    background: rgba(128, 128, 128, 0.045);
+}
+
+.app-card-title {
+    font-weight: 700;
+    font-size: 1.02rem;
+    margin-bottom: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.app-card-subtle {
+    color: rgba(128, 128, 128, 0.95);
+    font-size: 0.85rem;
+}
+
+.stat-tile {
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 10px;
+    padding: 0.7rem 0.9rem;
+    text-align: center;
+    background: rgba(128, 128, 128, 0.045);
+}
+
+.stat-tile .stat-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.stat-tile .stat-label {
+    font-size: 0.75rem;
+    color: rgba(128, 128, 128, 0.95);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sidebar-section-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(128, 128, 128, 0.95);
+    margin: 0.9rem 0 0.35rem 0;
+}
+
+.step-track {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.4rem;
+}
+
+.step-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.86rem;
+    padding: 0.15rem 0;
+}
+
+.step-item.step-done { color: #15803D; font-weight: 600; }
+.step-item.step-current { font-weight: 700; }
+.step-item.step-pending { color: rgba(128, 128, 128, 0.85); }
+
+.activity-item {
+    font-size: 0.82rem;
+    padding: 0.25rem 0;
+    border-bottom: 1px dashed rgba(128, 128, 128, 0.2);
+}
+.activity-item:last-child { border-bottom: none; }
+
+.system-status-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 0.4rem;
+}
