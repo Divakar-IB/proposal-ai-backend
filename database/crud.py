@@ -226,3 +226,22 @@ async def update_proposal_section(
     await db.commit()
     await db.refresh(section)
     return section
+
+
+async def get_proposal_section_by_id(db: AsyncSession, section_id: int) -> ProposalSection | None:
+    result = await db.execute(
+        select(ProposalSection).filter(ProposalSection.id == section_id, ProposalSection.is_active.is_(True))
+    )
+    return result.scalars().first()
+
+
+async def get_categories_by_names(db: AsyncSession, names: list[str]) -> list[Category]:
+    """Resolves LLM-produced capability-tag names against the known Category
+    table — used to default /proposals/generate's category_ids when the
+    caller doesn't pass them explicitly."""
+    if not names:
+        return []
+    result = await db.execute(
+        select(Category).filter(Category.name.in_(names), Category.is_active.is_(True))
+    )
+    return list(result.scalars().all())

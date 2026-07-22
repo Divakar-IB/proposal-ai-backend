@@ -18,11 +18,17 @@ class ProposalSectionResponse(BaseModel):
     title: str
     order_index: int
     content: Optional[str] = None
-    citations: Optional[list[dict[str, Any]]] = None
+    sources: Optional[list[dict[str, Any]]] = None
     status: ProposalSectionStatus
+    confidence_score: Optional[float] = None
+    review_flag: bool = False
 
     class Config:
         from_attributes = True
+
+
+class SectionEditRequest(BaseModel):
+    content: str
 
 
 class ProposalResponse(BaseModel):
