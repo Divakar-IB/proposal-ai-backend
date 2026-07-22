@@ -152,6 +152,20 @@ async def create_requirement_document(db: AsyncSession, document: RequirementDoc
     return document
 
 
+async def get_requirement_documents_by_proposal_id(
+    db: AsyncSession, proposal_id: int
+) -> list[RequirementDocument]:
+    result = await db.execute(
+        select(RequirementDocument)
+        .filter(
+            RequirementDocument.proposal_id == proposal_id,
+            RequirementDocument.is_active.is_(True),
+        )
+        .order_by(RequirementDocument.created_at)
+    )
+    return list(result.scalars().all())
+
+
 async def update_requirement_document(
     db: AsyncSession, document: RequirementDocument, **fields
 ) -> RequirementDocument:
@@ -174,20 +188,6 @@ async def get_proposal_by_id(db: AsyncSession, proposal_id: int) -> Proposal | N
     result = await db.execute(
         select(Proposal)
         .filter(Proposal.id == proposal_id, Proposal.is_active.is_(True))
-    )
-    return result.scalars().first()
-
-
-async def get_proposal_by_requirement_document_id(
-    db: AsyncSession, requirement_document_id: int
-) -> Proposal | None:
-    result = await db.execute(
-        select(Proposal)
-        .filter(
-            Proposal.requirement_document_id == requirement_document_id,
-            Proposal.is_active.is_(True),
-        )
-        .order_by(Proposal.created_at.desc())
     )
     return result.scalars().first()
 
@@ -233,6 +233,15 @@ async def get_proposal_section_by_id(db: AsyncSession, section_id: int) -> Propo
         select(ProposalSection).filter(ProposalSection.id == section_id, ProposalSection.is_active.is_(True))
     )
     return result.scalars().first()
+
+
+async def get_proposal_sections_by_ids(db: AsyncSession, section_ids: list[int]) -> list[ProposalSection]:
+    result = await db.execute(
+        select(ProposalSection).filter(
+            ProposalSection.id.in_(section_ids), ProposalSection.is_active.is_(True)
+        )
+    )
+    return list(result.scalars().all())
 
 
 async def get_categories_by_names(db: AsyncSession, names: list[str]) -> list[Category]:

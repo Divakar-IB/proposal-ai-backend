@@ -27,13 +27,18 @@ class ProposalSectionResponse(BaseModel):
         from_attributes = True
 
 
-class SectionEditRequest(BaseModel):
+class SectionEditItem(BaseModel):
+    section_id: int
     content: str
+
+
+class SectionsBulkEditRequest(BaseModel):
+    sections: list[SectionEditItem]
 
 
 class ProposalResponse(BaseModel):
     id: int
-    requirement_document_id: int
+    requirement_document_ids: list[int] = []
     user_id: int
     title: str
     client_name: str
@@ -42,10 +47,20 @@ class ProposalResponse(BaseModel):
     page_count: Optional[int] = None
     status: ProposalStatus
     markdown_path: Optional[str] = None
+    approved_markdown: Optional[str] = None
     docx_path: Optional[str] = None
+    pdf_path: Optional[str] = None
     error_message: Optional[str] = None
     sections: list[ProposalSectionResponse] = []
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class ProposalExportResponse(BaseModel):
+    proposal_id: int
+    status: ProposalStatus
+    markdown_url: Optional[str] = None
+    docx_url: Optional[str] = None
+    pdf_url: Optional[str] = None

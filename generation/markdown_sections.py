@@ -38,3 +38,14 @@ def split_into_sections(markdown: str) -> list[dict]:
         })
 
     return sections
+
+
+def assemble_markdown(proposal_title: str, sections: list[dict]) -> str:
+    """Inverse of split_into_sections — rebuilds one canonical Markdown
+    document from ordered section dicts (each needs at least "title" and
+    "content"). Shared by the per-section generation stream and the
+    DOCX/PDF export service, so both always render from the same shape."""
+
+    ordered = sorted(sections, key=lambda section: section.get("order_index", 0))
+    body = "\n\n".join(f"## {section['title']}\n\n{section['content'] or ''}".rstrip() for section in ordered)
+    return f"# {proposal_title}\n\n{body}\n"

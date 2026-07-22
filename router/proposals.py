@@ -9,25 +9,21 @@ from authentication.dependency import get_current_user
 from database.crud import (
     create_proposal,
     create_requirement_document,
-    get_categories_by_names,
     get_proposal_by_id,
-    get_proposal_by_requirement_document_id,
-    get_requirement_document_by_id,
 )
 from database.database import get_db
 from database.db_enum import DocumentStatus, ProposalStatus
-from database.models import Proposal, RequirementDocument
-from generation.proposal_generator import generate_proposal_stream
-from schemas.proposal import ProposalGenerateRequest, ProposalResponse
 from database.models import Proposal, ProposalSection, RequirementDocument
+from generation.proposal_generator import generate_proposal_stream
 from schemas.proposal import (
+    ProposalExportResponse,
     ProposalGenerateRequest,
     ProposalResponse,
     ProposalSectionResponse,
-    SectionEditRequest,
+    SectionsBulkEditRequest,
 )
 from schemas.requirement_document import RequirementDocumentResponse
-from services import proposal_review_service
+from services import proposal_export_service, proposal_review_service
 from tasks.requirement_processing import process_requirement_document_pipeline
 from utilities.logger import get_logger
 from utilities.s3_service import S3PathBuilder, S3Service
@@ -41,12 +37,16 @@ router = APIRouter(
 )
 
 
+# ------------------------------------------------------------------
+# Response builders
+# ------------------------------------------------------------------
+
 def _requirement_document_response(
     document: RequirementDocument, proposal: Proposal
 ) -> RequirementDocumentResponse:
     return RequirementDocumentResponse(
         id=document.id,
-        proposal_id=proposal.id,
+        proposal_id=document.proposal_id,
         file_name=document.file_name,
         extension=document.extension,
         user_id=document.user_id,
@@ -65,6 +65,7 @@ def _proposal_section_response(section: ProposalSection) -> ProposalSectionRespo
     return ProposalSectionResponse(
         id=section.id,
         section_key=section.section_key,
+        title=section.title,
         order_index=section.order_index,
         content=section.content,
         sources=section.citations,
@@ -77,20 +78,33 @@ def _proposal_section_response(section: ProposalSection) -> ProposalSectionRespo
 def _proposal_response(proposal: Proposal) -> ProposalResponse:
     return ProposalResponse(
         id=proposal.id,
-        requirement_document_id=proposal.requirement_document_id,
+        requirement_document_ids=[document.id for document in proposal.requirement_documents],
         user_id=proposal.user_id,
         title=proposal.title,
+        client_name=proposal.client_name,
+        additional_context=proposal.additional_context,
+        generation_mode=proposal.generation_mode,
+        page_count=proposal.page_count,
         status=proposal.status,
         markdown_path=proposal.markdown_path,
+        approved_markdown=proposal.approved_markdown,
         docx_path=proposal.docx_path,
+        pdf_path=proposal.pdf_path,
         error_message=proposal.error_message,
         sections=[_proposal_section_response(section) for section in proposal.sections],
         created_at=proposal.created_at,
     )
 
 
+async def _get_proposal_or_404(db: AsyncSession, proposal_id: int) -> Proposal:
+    proposal = await get_proposal_by_id(db, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+    return proposal
+
+
 # ------------------------------------------------------------------
-# Requirement documents (upload -> extract/summarize/match, all returned
+# Requirement document (upload -> extract/summarize/match, all returned
 # synchronously in this same response)
 # ------------------------------------------------------------------
 
@@ -112,7 +126,8 @@ async def upload_requirement_document(
     the caller gets the summary and matches back here directly instead of
     polling a separate status endpoint. Also creates the Proposal row up
     front (title/client_name/additional_context), which the later
-    /generate call will draft into."""
+    /generate call will draft into. Must succeed even when there are no
+    knowledge documents in the system yet."""
 
     user_id = current_user["user_id"]
     extension = Path(file.filename or "").suffix.lstrip(".").lower()
@@ -127,17 +142,7 @@ async def upload_requirement_document(
             detail="Failed to upload file to storage. Please try again.",
         )
 
-    document = RequirementDocument(
-        file_name=file.filename,
-        file_path=s3_key,
-        extension=extension,
-        user_id=user_id,
-    )
-    document = await create_requirement_document(db, document)
-    logger.info("requirement document created | document_id=%s", document.id)
-
     proposal = Proposal(
-        requirement_document_id=document.id,
         user_id=user_id,
         title=proposal_name,
         client_name=client_name,
@@ -145,32 +150,24 @@ async def upload_requirement_document(
         status=ProposalStatus.INPROGRESS,
     )
     proposal = await create_proposal(db, proposal)
-    logger.info("proposal created | proposal_id=%s document_id=%s", proposal.id, document.id)
+    logger.info("proposal created | proposal_id=%s", proposal.id)
+
+    document = RequirementDocument(
+        file_name=file.filename,
+        file_path=s3_key,
+        extension=extension,
+        user_id=user_id,
+        proposal_id=proposal.id,
+    )
+    document = await create_requirement_document(db, document)
+    logger.info("requirement document created | document_id=%s proposal_id=%s", document.id, proposal.id)
 
     document = await process_requirement_document_pipeline(db, document, additional_context=additional_context)
-
     if document.status == DocumentStatus.FAILED:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Failed to process requirement document — see server logs for details.",
         )
-
-    return _requirement_document_response(document, proposal)
-
-
-@router.get("/requirement-documents/{document_id}", response_model=RequirementDocumentResponse)
-async def get_requirement_document(
-    document_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    document = await get_requirement_document_by_id(db, document_id)
-    if document is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement document not found")
-
-    proposal = await get_proposal_by_requirement_document_id(db, document_id)
-    if proposal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found for this document")
 
     return _requirement_document_response(document, proposal)
 
@@ -185,14 +182,12 @@ async def generate_proposal_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Streams the generated proposal as raw Markdown text, incrementally,
-    as the LLM produces it. Once the stream completes, the full Markdown is
-    split into sections (on "## " headings) and persisted — see
-    generation/proposal_generator.py."""
+    """Streams the proposal section-by-section as Server-Sent Events —
+    section_start -> section_chunk (repeated) -> section_done per section,
+    then a final done event. Each section is persisted to the database as
+    soon as its draft completes — see generation/proposal_generator.py."""
 
-    proposal = await get_proposal_by_id(db, request.proposal_id)
-    if proposal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+    proposal = await _get_proposal_or_404(db, request.proposal_id)
 
     logger.info(
         "proposal generation started | proposal_id=%s mode=%s page_count=%s",
@@ -205,7 +200,7 @@ async def generate_proposal_endpoint(
             page_count=request.page_count,
             generation_mode=request.generation_mode,
         ),
-        media_type="text/markdown",
+        media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
@@ -216,28 +211,27 @@ async def get_proposal(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    proposal = await get_proposal_by_id(db, proposal_id)
-    if proposal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+    proposal = await _get_proposal_or_404(db, proposal_id)
     return _proposal_response(proposal)
 
 
 # ------------------------------------------------------------------
-# Review & Refine — per-section edit / regenerate / approve
+# Section editing / regeneration
 # ------------------------------------------------------------------
 
-@router.patch("/sections/{section_id}", response_model=ProposalSectionResponse)
-async def edit_proposal_section(
-    section_id: int,
-    request: SectionEditRequest,
+@router.patch("/{proposal_id}/sections", response_model=list[ProposalSectionResponse])
+async def edit_proposal_sections(
+    proposal_id: int,
+    request: SectionsBulkEditRequest,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Manual edit of a section's content — leaves status/review_flag as-is;
-    approving is a separate explicit action below."""
+    """Manual edit of one or more sections' content in a single request —
+    leaves status/review_flag as-is; approving is a separate explicit
+    action below."""
 
-    section = await proposal_review_service.edit_section(db, section_id, request)
-    return _proposal_section_response(section)
+    sections = await proposal_review_service.edit_sections(db, proposal_id, request.sections)
+    return [_proposal_section_response(section) for section in sections]
 
 
 @router.post("/sections/{section_id}/regenerate", response_model=ProposalSectionResponse)
@@ -262,3 +256,45 @@ async def approve_proposal_section(
 ):
     section = await proposal_review_service.approve_section(db, section_id)
     return _proposal_section_response(section)
+
+
+# ------------------------------------------------------------------
+# Whole-proposal approval + export
+# ------------------------------------------------------------------
+
+@router.post("/{proposal_id}/approve", response_model=ProposalResponse)
+async def approve_proposal(
+    proposal_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Signs off on the whole proposal — requires every section to already
+    be drafted and clear of any review flag, then force-approves any
+    remaining drafted-but-not-yet-approved sections. This is the gate before
+    export."""
+
+    proposal = await proposal_review_service.approve_proposal(db, proposal_id)
+    return _proposal_response(proposal)
+
+
+@router.post("/{proposal_id}/export", response_model=ProposalExportResponse)
+async def export_proposal(
+    proposal_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Renders the proposal's canonical stored Markdown to DOCX and PDF and
+    uploads both to S3. Only allowed once the proposal is APPROVED — export
+    never regenerates content, it only reformats what was already signed
+    off on."""
+
+    proposal = await proposal_export_service.export_proposal(db, proposal_id)
+    return ProposalExportResponse(
+        proposal_id=proposal.id,
+        status=proposal.status,
+        markdown_url=s3_service.generate_presigned_url(proposal.markdown_path) if proposal.markdown_path else None,
+        docx_url=s3_service.generate_presigned_url(proposal.docx_path) if proposal.docx_path else None,
+        pdf_url=s3_service.generate_presigned_url(proposal.pdf_path) if proposal.pdf_path else None,
+    )
+
+

@@ -1,73 +1,44 @@
-from typing import AsyncIterator, Optional
+import json
+from typing import AsyncIterator
 
 from database.crud import (
     create_proposal_sections,
     delete_proposal_sections_for_proposal,
     get_proposal_by_id,
-    get_requirement_document_by_id,
+    get_requirement_documents_by_proposal_id,
     has_any_knowledge_chunks,
     update_proposal,
 )
 from database.database import db_session
 from database.db_enum import GenerationMode, ProposalSectionStatus, ProposalStatus
-from database.models import Proposal, ProposalSection
-from embedding.embedder import embed_query
-from generation.markdown_sections import split_into_sections
-from generation.prompts import (
-    GENERATE_SYSTEM_PROMPT,
-    GENERATE_USER_TEMPLATE,
-    WORDS_PER_PAGE,
-    build_grounding_instructions,
-    build_knowledge_context_block,
-)
-from llm.chat_client import GroqChatClient
+from database.models import ProposalSection
+from generation.markdown_sections import assemble_markdown
+from generation.nodes import draft_one_section_stream, retrieve_chunks_for_section, section_citations
+from generation.prompts import WORDS_PER_PAGE
+from generation.requirement_context import build_combined_requirements_json
+from generation.sections import SECTION_DEFINITIONS
 from utilities.logger import get_logger
 from utilities.s3_service import S3Service
-from vectorstore.knowledge_store import query_chunks
 
 logger = get_logger(__name__)
 s3_service = S3Service()
 
-TOP_K_KNOWLEDGE_CHUNKS = 15
+MIN_SECTION_WORD_TARGET = 100
 
 
-async def _retrieve_knowledge_context(
-    db, proposal: Proposal, requirement_summary: Optional[str]
-) -> list[dict]:
-    if not await has_any_knowledge_chunks(db):
-        return []
-
-    query_text = "\n".join(
-        part for part in [proposal.title, requirement_summary, proposal.additional_context] if part
-    ).strip()
-    if not query_text:
-        return []
-
-    query_embedding = embed_query(query_text)
-    return query_chunks(query_embedding, top_k=TOP_K_KNOWLEDGE_CHUNKS)
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def _build_messages(
-    proposal: Proposal,
-    requirement_summary: Optional[str],
-    page_count: int,
-    knowledge_chunks: list[dict],
-) -> list[dict]:
-    system_prompt = GENERATE_SYSTEM_PROMPT.format(
-        word_target=page_count * WORDS_PER_PAGE,
-        grounding_instructions=build_grounding_instructions(bool(knowledge_chunks)),
-    )
-    user_prompt = GENERATE_USER_TEMPLATE.format(
-        proposal_title=proposal.title,
-        client_name=proposal.client_name,
-        requirement_summary=requirement_summary or "(no summary available)",
-        additional_context=proposal.additional_context or "(none provided)",
-        knowledge_context=build_knowledge_context_block(knowledge_chunks),
-    )
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
+def _build_drafting_note(
+    proposal_title: str, client_name: str, additional_context: str | None, word_target: int
+) -> str:
+    lines = [
+        f"Proposal: {proposal_title} — Client: {client_name}",
+        f"Additional context: {additional_context}" if additional_context else None,
+        f"Target length: approximately {word_target} words.",
     ]
+    return "\n".join(line for line in lines if line)
 
 
 async def generate_proposal_stream(
@@ -75,73 +46,112 @@ async def generate_proposal_stream(
     page_count: int,
     generation_mode: GenerationMode,
 ) -> AsyncIterator[str]:
-    """Core generator: fetches the proposal + its requirement summary,
-    optionally retrieves knowledge-base context, streams Markdown deltas
-    from Groq as they arrive, then on completion splits the full text into
-    sections and persists everything. Yields raw Markdown text chunks."""
+    """Drafts the proposal one section at a time and streams each section's
+    lifecycle as Server-Sent Events:
+
+        event: section_start  data: {"name": "..."}
+        event: section_chunk  data: {"content": "..."}   (repeated)
+        event: section_done   data: {"name": "..."}
+        ... (repeated per section) ...
+        event: done            data: {}
+
+    Each section is persisted to the ProposalSection table as soon as its
+    draft completes, so a client disconnecting mid-stream still leaves
+    earlier sections saved. On failure, an "error" event is emitted and the
+    proposal is marked FAILED instead of raising into a stream that already
+    sent a 200 response."""
 
     async with db_session() as db:
         proposal = await get_proposal_by_id(db, proposal_id)
         if proposal is None:
             raise ValueError(f"proposal {proposal_id} not found")
 
-        requirement_document = await get_requirement_document_by_id(db, proposal.requirement_document_id)
-        requirement_summary = requirement_document.summary if requirement_document else None
+        requirement_documents = await get_requirement_documents_by_proposal_id(db, proposal.id)
+        requirements_json = build_combined_requirements_json(requirement_documents)
+        requirements = json.loads(requirements_json) if requirements_json else {}
 
-        knowledge_chunks: list[dict] = []
-        if generation_mode == GenerationMode.KNOWLEDGE_AUGMENTED:
-            knowledge_chunks = await _retrieve_knowledge_context(db, proposal, requirement_summary)
+        has_knowledge = generation_mode == GenerationMode.KNOWLEDGE_AUGMENTED and await has_any_knowledge_chunks(db)
 
+        proposal_title = proposal.title
+        client_name = proposal.client_name
+        additional_context = proposal.additional_context
+        user_id = proposal.user_id
+        category_ids = proposal.category_ids
+
+        await delete_proposal_sections_for_proposal(db, proposal.id)
         await update_proposal(
             db, proposal,
             status=ProposalStatus.GENERATING,
             generation_mode=generation_mode,
             page_count=page_count,
         )
-        messages = _build_messages(proposal, requirement_summary, page_count, knowledge_chunks)
 
-    full_markdown_parts: list[str] = []
+    word_target = max((page_count * WORDS_PER_PAGE) // len(SECTION_DEFINITIONS), MIN_SECTION_WORD_TARGET)
+    drafting_note = _build_drafting_note(proposal_title, client_name, additional_context, word_target)
+
+    persisted_sections: list[dict] = []
     try:
-        for delta in GroqChatClient.stream_complete(messages):
-            full_markdown_parts.append(delta)
-            yield delta
+        for order_index, definition in enumerate(SECTION_DEFINITIONS):
+            yield _sse("section_start", {"name": definition["title"]})
+
+            section_state = {
+                "key": definition["key"],
+                "title": definition["title"],
+                "query_fields": definition["query_fields"],
+                "drafting_note": drafting_note,
+                "retrieved_chunks": [],
+            }
+            section_state["retrieved_chunks"] = await retrieve_chunks_for_section(
+                section_state, requirements, category_ids, has_knowledge,
+            )
+
+            content_parts: list[str] = []
+            for delta in draft_one_section_stream(section_state, requirements_json):
+                content_parts.append(delta)
+                yield _sse("section_chunk", {"content": delta})
+
+            content = "".join(content_parts).strip()
+            citations = section_citations(section_state)
+
+            persisted_sections.append({
+                "title": definition["title"],
+                "content": content,
+                "order_index": order_index,
+            })
+
+            async with db_session() as db:
+                await create_proposal_sections(db, [
+                    ProposalSection(
+                        proposal_id=proposal_id,
+                        section_key=definition["key"],
+                        title=definition["title"],
+                        order_index=order_index,
+                        content=content,
+                        citations=citations,
+                        status=ProposalSectionStatus.APPROVED,
+                    )
+                ])
+
+            yield _sse("section_done", {"name": definition["title"]})
+
     except Exception as error:
         logger.exception("proposal generation failed | proposal_id=%s", proposal_id)
         async with db_session() as db:
             proposal = await get_proposal_by_id(db, proposal_id)
             if proposal:
                 await update_proposal(db, proposal, status=ProposalStatus.FAILED, error_message=str(error))
-        raise
+        yield _sse("error", {"message": str(error)})
+        return
 
-    await _persist_generated_proposal(proposal_id, "".join(full_markdown_parts))
-
-
-async def _persist_generated_proposal(proposal_id: int, markdown: str) -> None:
-    sections = split_into_sections(markdown)
+    markdown = assemble_markdown(proposal_title, persisted_sections)
+    s3_key = f"output/proposals/{user_id}/{proposal_id}/proposal.md"
+    s3_service.upload_bytes(markdown.encode("utf-8"), s3_key, content_type="text/markdown")
 
     async with db_session() as db:
         proposal = await get_proposal_by_id(db, proposal_id)
-        if proposal is None:
-            return
-
-        s3_key = f"output/proposals/{proposal.user_id}/{proposal_id}/proposal.md"
-        s3_service.upload_bytes(markdown.encode("utf-8"), s3_key, content_type="text/markdown")
-
-        await delete_proposal_sections_for_proposal(db, proposal_id)
-        section_rows = [
-            ProposalSection(
-                proposal_id=proposal_id,
-                section_key=section["section_key"],
-                title=section["title"],
-                order_index=section["order_index"],
-                content=section["content"],
-                status=ProposalSectionStatus.APPROVED,
-            )
-            for section in sections
-        ]
-        await create_proposal_sections(db, section_rows)
-
         await update_proposal(db, proposal, markdown_path=s3_key, status=ProposalStatus.REVIEW)
-        logger.info(
-            "proposal generation completed | proposal_id=%s sections=%s", proposal_id, len(sections)
-        )
+
+    logger.info(
+        "proposal generation completed | proposal_id=%s sections=%s", proposal_id, len(persisted_sections)
+    )
+    yield _sse("done", {})

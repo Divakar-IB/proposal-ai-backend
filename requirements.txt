@@ -19,10 +19,22 @@ minio==7.2.20
 python-multipart==0.0.32
 
 python-docx==1.2.0
+# DOCX/PDF export of generated proposals (services/proposal_export_service.py).
+# pypandoc is a thin wrapper around the `pandoc` binary — it must be installed
+# separately on the host/image (e.g. `apt-get install pandoc`), pip alone is
+# not enough. weasyprint needs its native deps too (Pango, Cairo, GDK-PixBuf —
+# `apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0
+# libcairo2 libffi-dev`).
+pypandoc==1.16
+weasyprint==63.1
 # paddlepaddle 3.3.x has a CPU/oneDNN PIR regression that crashes PPStructureV3
 # layout detection (github.com/PaddlePaddle/Paddle/issues/77340) — pin 3.2.2.
 paddlepaddle==3.2.2
 paddleocr==3.7.0
+# paddleocr's PP-StructureV3 pipeline (extraction/ocr_engine.py) doesn't pull
+# this in on its own — without it, pipeline creation fails with
+# "PP-StructureV3 requires additional dependencies" at first use.
+paddlex[ocr]==3.7.2
 # paddlex's "ocr" extra hard-requires opencv-contrib-python by exact package
 # name (swapping to opencv-python-headless fails its dependency check even
 # though cv2 itself works fine) — needs libGL.so.1 at runtime as a result;

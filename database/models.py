@@ -114,6 +114,9 @@ class RequirementDocument(BasicModel):
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     extension: Mapped[str] = mapped_column(String(20), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    proposal_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("proposals.id"), nullable=True, index=True
+    )
     status: Mapped[DocumentStatus] = mapped_column(
         SAEnum(DocumentStatus), nullable=False, default=DocumentStatus.UPLOADING
     )
@@ -124,15 +127,12 @@ class RequirementDocument(BasicModel):
     knowledge_matches: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
 
     uploader: Mapped["User"] = relationship(back_populates="requirement_documents")
-    proposals: Mapped[list["Proposal"]] = relationship(back_populates="requirement_document")
+    proposal: Mapped[Optional["Proposal"]] = relationship(back_populates="requirement_documents")
 
 
 class Proposal(BasicModel):
     __tablename__ = "proposals"
 
-    requirement_document_id: Mapped[int] = mapped_column(
-        ForeignKey("requirement_documents.id"), nullable=False, index=True
-    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     client_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -145,11 +145,16 @@ class Proposal(BasicModel):
     )
     page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     markdown_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_approved: Mapped[bool] = mapped_column(nullable=False, default=False)
+    approved_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     docx_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pdf_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     category_ids: Mapped[Optional[list[int]]] = mapped_column(ARRAY(Integer), nullable=True)
 
-    requirement_document: Mapped["RequirementDocument"] = relationship(back_populates="proposals")
+    requirement_documents: Mapped[list["RequirementDocument"]] = relationship(
+        back_populates="proposal", order_by="RequirementDocument.created_at", lazy="selectin"
+    )
     sections: Mapped[list["ProposalSection"]] = relationship(
         back_populates="proposal",
         cascade="all, delete-orphan",
