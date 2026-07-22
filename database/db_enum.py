@@ -33,6 +33,11 @@ class ProposalSectionStatus(str, Enum):
     APPROVED       = "approved"
 
 
+class GenerationMode(str, Enum):
+    LLM_ONLY = "llm_only"
+    KNOWLEDGE_AUGMENTED = "knowledge_augmented"
+
+
 class DocumentAvailability(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"

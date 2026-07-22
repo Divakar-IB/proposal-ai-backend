@@ -3,17 +3,19 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
-from database.db_enum import ProposalSectionStatus, ProposalStatus
+from database.db_enum import GenerationMode, ProposalSectionStatus, ProposalStatus
 
 
 class ProposalGenerateRequest(BaseModel):
-    requirement_document_id: int
-    category_ids: Optional[list[int]] = None
+    proposal_id: int
+    page_count: int
+    generation_mode: GenerationMode
 
 
 class ProposalSectionResponse(BaseModel):
     id: int
     section_key: str
+    title: str
     order_index: int
     content: Optional[str] = None
     citations: Optional[list[dict[str, Any]]] = None
@@ -28,6 +30,10 @@ class ProposalResponse(BaseModel):
     requirement_document_id: int
     user_id: int
     title: str
+    client_name: str
+    additional_context: Optional[str] = None
+    generation_mode: Optional[GenerationMode] = None
+    page_count: Optional[int] = None
     status: ProposalStatus
     markdown_path: Optional[str] = None
     docx_path: Optional[str] = None

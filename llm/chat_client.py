@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from openai import OpenAI
 
@@ -39,3 +39,24 @@ class GroqChatClient:
             kwargs["tool_choice"] = tool_choice or "required"
 
         return client.chat.completions.create(**kwargs)
+
+    @classmethod
+    def stream_complete(
+        cls,
+        messages: list[dict[str, str]],
+        temperature: float = 0.4,
+    ) -> Iterator[str]:
+        """Yields text deltas as they arrive — plain completion only, no
+        tool-calling (streaming + forced tool calls don't mix cleanly)."""
+
+        client = cls.get_client()
+        stream = client.chat.completions.create(
+            model=config.groq.llm_model,
+            messages=messages,
+            temperature=temperature,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta

@@ -208,6 +208,16 @@ async def create_proposal_sections(
     return sections
 
 
+async def delete_proposal_sections_for_proposal(db: AsyncSession, proposal_id: int) -> None:
+    """Wipes prior sections before storing a fresh generation — avoids stale/
+    duplicate rows on regeneration."""
+
+    result = await db.execute(select(ProposalSection).filter(ProposalSection.proposal_id == proposal_id))
+    for section in result.scalars().all():
+        await db.delete(section)
+    await db.commit()
+
+
 async def update_proposal_section(
     db: AsyncSession, section: ProposalSection, **fields: Any
 ) -> ProposalSection:

@@ -1,79 +1,61 @@
-DRAFT_SYSTEM_PROMPT = """You are a senior proposal writer. Draft ONE section of a client proposal.
+WORDS_PER_PAGE = 500
 
-The organization may or may not have relevant knowledge-base context available for this
-section — both are normal, expected situations. Check the "Retrieved context" block below
-before writing:
+GENERATE_SYSTEM_PROMPT = """You are a senior proposal writer producing a complete, client-ready proposal
+as a single Markdown document.
 
-- If context excerpts ARE provided (not the "(no relevant context retrieved)" placeholder):
-  ground every concrete claim (capability, past result, certification, specific technical
-  detail) in those excerpts. Do not invent specifics the context doesn't support.
-- If NO context excerpts are provided: write the section from sound general professional/
-  industry best practice appropriate to the client's stated requirements. Write with the
-  same confidence and completeness as you would with context — do NOT soften the section,
-  shorten it, or apologize for missing a knowledge base. Just keep claims generic and
-  defensible (e.g. "a phased delivery approach with weekly checkpoints" rather than "we
-  delivered this for 40+ clients last year") instead of fabricating specific company
-  achievements, named past clients, certifications, or exact metrics you have no basis for.
-- Only write a line starting with "GAP:" when the CLIENT REQUIREMENTS themselves are missing
-  information needed to draft this section — never merely because no knowledge-base context
-  was retrieved. Absence of context is not a gap; it's the default case to write around.
-- Write in a professional, confident, client-facing tone. No filler, no apologies.
-- Output the section body only — do not repeat the section title as a heading.
+Structure:
+- Start directly with the first section heading — no document title, no preamble.
+- Use "## " (H2) for every top-level section heading. Do not use any other heading level for
+  top-level sections. Choose section titles appropriate to this specific engagement (e.g.
+  Executive Summary, Understanding of Requirements, Proposed Solution, Timeline, Pricing) —
+  you decide which sections this proposal needs and in what order.
+- Use "### " sub-headings, bullet lists, and tables within a section where useful. Never use "## " except for a new top-level section.
+
+Length: aim for approximately {word_target} words in total across the whole document.
+
+Grounding:
+{grounding_instructions}
+
+Tone: professional, confident, client-facing. No filler, no apologies, no meta-commentary
+about being an AI. Output only the proposal Markdown — nothing before or after it.
 """
 
-DRAFT_USER_TEMPLATE = """# Section to draft
-{section_title}
+_LLM_ONLY_GROUNDING = """No knowledge-base context is available for this proposal. Write every section from
+sound general professional/industry best practice appropriate to the client's stated
+requirements. Keep claims generic and defensible (e.g. "a phased delivery approach with
+weekly checkpoints") rather than fabricating specific company achievements, named past
+clients, certifications, or exact metrics you have no basis for."""
 
-# Client requirements (structured)
-{requirements_json}
+_KNOWLEDGE_AUGMENTED_GROUNDING = """Knowledge-base excerpts from the organization's own past work are provided below. Ground
+every concrete claim (capability, past result, certification, specific technical detail) in
+those excerpts where they're relevant. Do not invent specifics the excerpts don't support.
+Where no excerpt covers a section, fall back to sound general professional best practice for
+that section rather than fabricating specifics."""
 
-# Retrieved context (breadcrumb — excerpt)
-{context_block}
+GENERATE_USER_TEMPLATE = """# Proposal title
+{proposal_title}
 
-# Revision feedback from the previous quality check (address this if present)
-{feedback}
+# Client
+{client_name}
 
-Draft the section body now.
-"""
+# Requirement summary (from the client's RFP/requirement document)
+{requirement_summary}
 
-QUALITY_CHECK_SYSTEM_PROMPT = """You are reviewing a drafted proposal section for a client-ready proposal.
+# Additional context from the submitter
+{additional_context}
 
-First check whether "Retrieved context available to the drafter" below has real excerpts or
-is the "(no relevant context retrieved)" placeholder — that determines how to judge claim #3.
+# Retrieved knowledge-base context
+{knowledge_context}
 
-Check for:
-1. Completeness — does it address the client requirements relevant to this section?
-2. Tone — professional and confident, no filler or hedging. Do NOT penalize a section for
-   lacking company-specific proof points if no context was available to the drafter — that
-   is expected, not a defect.
-3. Unsupported claims:
-   - If context excerpts WERE available: flag any specific claim (numbers, named past
-     results, certifications) that isn't traceable to those excerpts.
-   - If NO context excerpts were available: do not require citations. Instead, only flag
-     claims that look fabricated as if specific to this company (e.g. a named client, an
-     exact statistic, a specific certification) with nothing in the context to back it —
-     generic best-practice statements are fine and expected in this case.
-4. Any "GAP:" lines the drafter left — these should only reflect missing requirement
-   information. If a "GAP:" line exists merely because no context was retrieved, treat that
-   as a drafting mistake to flag in feedback, not a legitimate gap.
-
-Respond by calling the report_quality_check tool.
-"""
-
-QUALITY_CHECK_USER_TEMPLATE = """# Section: {section_title}
-
-# Client requirements (structured)
-{requirements_json}
-
-# Retrieved context available to the drafter
-{context_block}
-
-# Drafted content
-{content}
+Write the complete proposal now.
 """
 
 
-def build_context_block(chunks: list[dict]) -> str:
+def build_grounding_instructions(has_knowledge_context: bool) -> str:
+    return _KNOWLEDGE_AUGMENTED_GROUNDING if has_knowledge_context else _LLM_ONLY_GROUNDING
+
+
+def build_knowledge_context_block(chunks: list[dict]) -> str:
     if not chunks:
-        return "(no relevant context retrieved)"
+        return "(no relevant knowledge-base context retrieved)"
     return "\n\n".join(f"[{c['breadcrumb']}]\n{c['text']}" for c in chunks)

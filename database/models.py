@@ -22,7 +22,7 @@ from database.db_enum import (
     DocumentAvailability,
     ProposalStatus,
     ProposalSectionStatus,
-    # KnowledgeStatus
+    GenerationMode,
 )
 
 
@@ -139,6 +139,10 @@ class Proposal(BasicModel):
     status: Mapped[ProposalStatus] = mapped_column(
         SAEnum(ProposalStatus), nullable=False, default=ProposalStatus.INPROGRESS
     )
+    generation_mode: Mapped[Optional[GenerationMode]] = mapped_column(
+        SAEnum(GenerationMode), nullable=True
+    )
+    page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     markdown_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     docx_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -157,6 +161,7 @@ class ProposalSection(BasicModel):
 
     proposal_id: Mapped[int] = mapped_column(ForeignKey("proposals.id"), nullable=False, index=True)
     section_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     citations: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)

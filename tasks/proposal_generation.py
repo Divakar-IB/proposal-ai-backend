@@ -1,44 +1,29 @@
 from database.crud import get_proposal_by_id, update_proposal
 from database.database import db_session
-from database.db_enum import ProposalStatus
-from generation.graph import run_proposal_generation
+from database.db_enum import GenerationMode, ProposalStatus
+from generation.proposal_generator import generate_proposal_stream
 from utilities.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 async def generate_proposal(
-    requirement_document_id: int,
     proposal_id: int,
-    user_id: int,
-    category_ids: list[int] | None = None,
+    page_count: int,
+    generation_mode: GenerationMode,
 ) -> None:
-    """
-    Runs as a background task (Arq job) after POST /proposals/generate creates
-    the Proposal row. Drives the LangGraph flow end to end; the graph's own
-    compile_proposal node persists sections + markdown, this wrapper only
-    owns overall Proposal status and failure handling.
-    """
+    """Runs as a background task (Arq job) — drives the same generator the
+    streaming API uses, just consuming its output fully instead of forwarding
+    chunks to an HTTP client. The generator persists sections/markdown and
+    handles its own FAILED status update on error; this wrapper is a backstop
+    for failures raised before the generator gets that far (e.g. proposal
+    not found)."""
+
     logger.info("proposal generation started | proposal_id=%s", proposal_id)
 
     try:
-        final_state = await run_proposal_generation(
-            requirement_document_id=requirement_document_id,
-            proposal_id=proposal_id,
-            user_id=user_id,
-            category_ids=category_ids,
-        )
-
-        if final_state.get("error"):
-            async with db_session() as db:
-                proposal = await get_proposal_by_id(db, proposal_id)
-                if proposal:
-                    await update_proposal(
-                        db, proposal, status=ProposalStatus.FAILED, error_message=final_state["error"]
-                    )
-            logger.error("proposal generation failed | proposal_id=%s error=%s", proposal_id, final_state["error"])
-            return
-
+        async for _ in generate_proposal_stream(proposal_id, page_count, generation_mode):
+            pass
         logger.info("proposal generation completed | proposal_id=%s", proposal_id)
 
     except Exception as error:

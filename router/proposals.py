@@ -12,12 +12,11 @@ from database.crud import (
     get_proposal_by_id,
     get_proposal_by_requirement_document_id,
     get_requirement_document_by_id,
-    update_proposal,
 )
 from database.database import get_db
 from database.db_enum import DocumentStatus, ProposalStatus
 from database.models import Proposal, RequirementDocument
-from generation.graph import stream_proposal_generation
+from generation.proposal_generator import generate_proposal_stream
 from schemas.proposal import ProposalGenerateRequest, ProposalResponse
 from schemas.requirement_document import RequirementDocumentResponse
 from tasks.requirement_processing import process_requirement_document_pipeline
@@ -125,6 +124,7 @@ async def upload_requirement_document(
 async def get_requirement_document(
     document_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     document = await get_requirement_document_by_id(db, document_id)
     if document is None:
@@ -147,38 +147,27 @@ async def generate_proposal_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Streams proposal generation progress as Server-Sent Events — one
-    "section" event each time a section is drafted, sent back for revision,
-    or approved, followed by a final "done"/"failed" event. The compiled
-    Proposal + ProposalSection rows are persisted by the graph's own
-    compile_proposal node once all sections settle."""
+    """Streams the generated proposal as raw Markdown text, incrementally,
+    as the LLM produces it. Once the stream completes, the full Markdown is
+    split into sections (on "## " headings) and persisted — see
+    generation/proposal_generator.py."""
 
-    user_id = current_user["user_id"]
-
-    requirement_document = await get_requirement_document_by_id(db, request.requirement_document_id)
-    if requirement_document is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement document not found")
-
-    proposal = await get_proposal_by_requirement_document_id(db, request.requirement_document_id)
+    proposal = await get_proposal_by_id(db, request.proposal_id)
     if proposal is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No proposal found for this requirement document — upload it via /requirement-documents first.",
-        )
-    proposal = await update_proposal(db, proposal, status=ProposalStatus.GENERATING)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+
     logger.info(
-        "proposal generation started | proposal_id=%s requirement_document_id=%s",
-        proposal.id, request.requirement_document_id,
+        "proposal generation started | proposal_id=%s mode=%s page_count=%s",
+        proposal.id, request.generation_mode, request.page_count,
     )
 
     return StreamingResponse(
-        stream_proposal_generation(
-            requirement_document_id=request.requirement_document_id,
-            proposal_id=proposal.id,
-            user_id=user_id,
-            category_ids=request.category_ids,
+        generate_proposal_stream(
+            proposal_id=request.proposal_id,
+            page_count=request.page_count,
+            generation_mode=request.generation_mode,
         ),
-        media_type="text/event-stream",
+        media_type="text/markdown",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
@@ -187,6 +176,7 @@ async def generate_proposal_endpoint(
 async def get_proposal(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     proposal = await get_proposal_by_id(db, proposal_id)
     if proposal is None:
