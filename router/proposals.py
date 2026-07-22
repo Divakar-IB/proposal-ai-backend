@@ -1,3 +1,4 @@
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
@@ -16,7 +17,8 @@ from database.db_enum import DocumentStatus, ProposalStatus
 from database.models import Proposal, ProposalSection, RequirementDocument
 from generation.proposal_generator import generate_proposal_stream
 from schemas.proposal import (
-    ProposalExportResponse,
+    ProposalExportEmailResponse,
+    ProposalExportRequest,
     ProposalGenerateRequest,
     ProposalResponse,
     ProposalSectionResponse,
@@ -279,24 +281,44 @@ async def approve_proposal(
     return _proposal_response(proposal)
 
 
-@router.post("/{proposal_id}/export", response_model=ProposalExportResponse)
+@router.post("/{proposal_id}/export")
 async def export_proposal(
     proposal_id: int,
+    request: ProposalExportRequest,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Renders the proposal's canonical stored Markdown to DOCX and PDF and
-    uploads both to S3. Only allowed once the proposal is APPROVED — export
-    never regenerates content, it only reformats what was already signed
-    off on."""
+    """Renders the proposal's stored proposal_json (frozen at approval time)
+    through the selected template. Only allowed once the proposal has been
+    approved — export never regenerates content, it only reformats what was
+    already signed off on. With no `email`, streams the file straight through
+    as a forced browser download; with `email` set, generates the same file,
+    attaches it, and emails it instead of returning it in the response body."""
 
-    proposal = await proposal_export_service.export_proposal(db, proposal_id)
-    return ProposalExportResponse(
-        proposal_id=proposal.id,
-        status=proposal.status,
-        markdown_url=s3_service.generate_presigned_url(proposal.markdown_path) if proposal.markdown_path else None,
-        docx_url=s3_service.generate_presigned_url(proposal.docx_path) if proposal.docx_path else None,
-        pdf_url=s3_service.generate_presigned_url(proposal.pdf_path) if proposal.pdf_path else None,
+    if request.email:
+        proposal = await proposal_export_service.export_and_email_proposal(
+            db, proposal_id, request.template_id, request.format, request.email
+        )
+        return ProposalExportEmailResponse(
+            proposal_id=proposal.id,
+            template_id=request.template_id,
+            format=request.format,
+            sent_to=request.email,
+        )
+
+    _proposal, content, filename, content_type = await proposal_export_service.render_proposal_document(
+        db, proposal_id, request.template_id, request.format
+    )
+
+    def iter_chunks(chunk_size: int = 64 * 1024):
+        buffer = BytesIO(content)
+        while chunk := buffer.read(chunk_size):
+            yield chunk
+
+    return StreamingResponse(
+        iter_chunks(),
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

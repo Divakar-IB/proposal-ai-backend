@@ -1,7 +1,8 @@
 from datetime import datetime
+from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 from database.db_enum import GenerationMode, ProposalSectionStatus, ProposalStatus
 
@@ -60,9 +61,19 @@ class ProposalResponse(BaseModel):
         from_attributes = True
 
 
-class ProposalExportResponse(BaseModel):
+class ExportFormat(str, Enum):
+    PDF = "pdf"
+    DOCX = "docx"
+
+
+class ProposalExportRequest(BaseModel):
+    template_id: int
+    format: ExportFormat
+    email: Optional[EmailStr] = None
+
+
+class ProposalExportEmailResponse(BaseModel):
     proposal_id: int
-    status: ProposalStatus
-    markdown_url: Optional[str] = None
-    docx_url: Optional[str] = None
-    pdf_url: Optional[str] = None
+    template_id: int
+    format: ExportFormat
+    sent_to: EmailStr
