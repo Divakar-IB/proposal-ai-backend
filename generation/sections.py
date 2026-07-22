@@ -1,8 +1,37 @@
-SECTION_DEFINITIONS: list[dict[str, str]] = [
+from typing import Optional
+
+
+def build_outline_instruction(outline: Optional[list[str]]) -> str:
+    """Renders a section's required subsection outline into an instruction
+    the drafter must follow verbatim — entries starting with "- " are
+    bullet points nested under the previous heading (e.g. the five use
+    cases under "Use Case Solutions") rather than headings of their own."""
+
+    if not outline:
+        return ""
+
+    lines = [f"  {item}" if item.startswith("- ") else f"### {item}" for item in outline]
+    return (
+        "This section must be broken into the following subsections, using \"### \" headings "
+        "in exactly this order (items already prefixed with \"- \" are bullet points nested under "
+        "the heading directly above them, not headings themselves):\n" + "\n".join(lines)
+    )
+
+
+SECTION_DEFINITIONS: list[dict] = [
     {
         "key": "executive_summary",
         "title": "Executive Summary",
         "query_fields": "project_title, scope",
+    },
+    {
+        "key": "company_profile",
+        "title": "Company Profile",
+        "query_fields": "project_title, scope",
+        "outline": [
+            "About InnoBoon Technologies",
+            "Relevant AI Capabilities",
+        ],
     },
     {
         "key": "understanding_of_requirements",
@@ -13,30 +42,76 @@ SECTION_DEFINITIONS: list[dict[str, str]] = [
         "key": "proposed_solution",
         "title": "Proposed Solution",
         "query_fields": "deliverables, technical_requirements",
+        "outline": [
+            "Architecture Overview",
+            "Use Case Solutions",
+            "- Use Case 1 – Insights & Visualization on Large Structured Trade Data",
+            "- Use Case 2 – Semantic Search on Free Trade Agreement (FTA) Documents",
+            "- Use Case 3 – HS Code Search Functionality",
+            "- Use Case 4 – Summary Dossier & Search from Non-Public Documents",
+            "- Use Case 5 – HS / Tariff Concordance Tool",
+        ],
     },
     {
-        "key": "technical_approach",
-        "title": "Technical Approach",
-        "query_fields": "technical_requirements, constraints",
+        "key": "technology_stack",
+        "title": "Technology Stack",
+        "query_fields": "technical_requirements",
     },
     {
-        "key": "team_and_expertise",
-        "title": "Team & Expertise",
-        "query_fields": "project_title, scope",
+        "key": "proposed_team_structure",
+        "title": "Proposed Team Structure",
+        "query_fields": "deliverables, project_title",
     },
     {
-        "key": "timeline",
-        "title": "Timeline & Milestones",
+        "key": "project_implementation_plan",
+        "title": "Project Implementation Plan",
         "query_fields": "timeline, deliverables",
+        "outline": [
+            "Phase 1 – Foundation",
+            "Phase 2 – Use Case 1 & Use Case 3",
+            "Phase 3 – Use Case 2 & Use Case 4",
+            "Phase 4 – Use Case 5",
+            "Phase 5 – Integration & User Acceptance Testing (UAT)",
+            "Phase 6 – Go-Live",
+            "Operations & Maintenance (O&M) Phase",
+        ],
     },
     {
-        "key": "pricing",
-        "title": "Pricing & Commercials",
+        "key": "non_functional_requirements_compliance",
+        "title": "Non-Functional Requirements Compliance",
+        "query_fields": "constraints, technical_requirements",
+    },
+    {
+        "key": "security_and_data_privacy_framework",
+        "title": "Security & Data Privacy Framework",
+        "query_fields": "constraints, technical_requirements",
+        "outline": [
+            "Zero Egress Guarantee",
+            "Data Access Architecture",
+            "Role-Based Access Control (RBAC)",
+            "Encryption Standards",
+            "Audit & Accountability",
+            "Third-Party Security Audit",
+            "GPU & Infrastructure Security",
+        ],
+    },
+    {
+        "key": "commercial_proposal",
+        "title": "Commercial Proposal",
         "query_fields": "budget_range, deliverables",
+        "outline": [
+            "Pricing Components",
+            "Important Notes on Pricing",
+        ],
     },
     {
-        "key": "case_studies",
-        "title": "Relevant Case Studies",
+        "key": "competitive_differentiators",
+        "title": "InnoBoon's Competitive Differentiators",
         "query_fields": "project_title, scope, technical_requirements",
+    },
+    {
+        "key": "declaration_and_authorised_undertaking",
+        "title": "Declaration & Authorised Undertaking",
+        "query_fields": "project_title",
     },
 ]

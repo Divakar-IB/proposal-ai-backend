@@ -17,7 +17,7 @@ from database.models import Proposal, ProposalSection
 from generation.markdown_sections import assemble_markdown, markdown_to_json
 from generation.nodes import decide_section_status, draft_one_section, retrieve_chunks_for_section, run_quality_check
 from generation.requirement_context import build_combined_requirements_json
-from generation.sections import SECTION_DEFINITIONS
+from generation.sections import SECTION_DEFINITIONS, build_outline_instruction
 from schemas.proposal import SectionEditItem
 from utilities.logger import get_logger
 
@@ -119,7 +119,7 @@ async def regenerate_section(db: AsyncSession, section_id: int) -> ProposalSecti
         "key": definition["key"],
         "title": definition["title"],
         "query_fields": definition["query_fields"],
-        "drafting_note": definition.get("drafting_note"),
+        "drafting_note": build_outline_instruction(definition.get("outline")) or None,
         "retrieved_chunks": [],
         "content": None,
         "citations": [],

@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from authentication.dependency import get_current_user
+from constants import EXPORT_TEMPLATES
 from database.crud import (
     create_proposal,
     create_requirement_document,
@@ -19,8 +20,12 @@ from generation.proposal_generator import generate_proposal_stream
 from schemas.proposal import (
     ProposalExportEmailResponse,
     ProposalExportRequest,
+    ExportTemplateResponse,
+    ProposalDetailResponse,
+    ProposalExportResponse,
     ProposalGenerateRequest,
     ProposalResponse,
+    ProposalSectionMinimal,
     ProposalSectionResponse,
     SectionsBulkEditRequest,
 )
@@ -97,6 +102,19 @@ def _proposal_response(proposal: Proposal) -> ProposalResponse:
         error_message=proposal.error_message,
         sections=[_proposal_section_response(section) for section in proposal.sections],
         created_at=proposal.created_at,
+    )
+
+
+def _proposal_detail_response(proposal: Proposal) -> ProposalDetailResponse:
+    return ProposalDetailResponse(
+        id=proposal.id,
+        title=proposal.title,
+        client_name=proposal.client_name,
+        status=proposal.status,
+        sections=[
+            ProposalSectionMinimal(id=section.id, title=section.title, content=section.content)
+            for section in proposal.sections
+        ],
     )
 
 
@@ -209,14 +227,27 @@ async def generate_proposal_endpoint(
     )
 
 
-@router.get("/{proposal_id}", response_model=ProposalResponse)
+@router.get("/templates", response_model=list[ExportTemplateResponse])
+async def list_export_templates(current_user: dict = Depends(get_current_user)):
+    """Hardcoded list of available DOCX/PDF export styles — see
+    constants.EXPORT_TEMPLATES. Declared before /{proposal_id} so "export-
+    templates" isn't swallowed by that dynamic path."""
+
+    return EXPORT_TEMPLATES
+
+
+@router.get("/{proposal_id}", response_model=ProposalDetailResponse)
 async def get_proposal(
     proposal_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    """Fetches the full proposal for viewing/review — trimmed to just what
+    the reviewer UI needs: proposal identity/status plus each section's id
+    and content, in order."""
+
     proposal = await _get_proposal_or_404(db, proposal_id)
-    return _proposal_response(proposal)
+    return _proposal_detail_response(proposal)
 
 
 # ------------------------------------------------------------------

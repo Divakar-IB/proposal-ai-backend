@@ -16,7 +16,7 @@ from generation.markdown_sections import assemble_markdown
 from generation.nodes import draft_one_section_stream, retrieve_chunks_for_section, section_citations
 from generation.prompts import WORDS_PER_PAGE
 from generation.requirement_context import build_combined_requirements_json
-from generation.sections import SECTION_DEFINITIONS
+from generation.sections import SECTION_DEFINITIONS, build_outline_instruction
 from utilities.logger import get_logger
 from utilities.s3_service import S3Service
 
@@ -30,7 +30,7 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def _build_drafting_note(
+def _build_common_note(
     proposal_title: str, client_name: str, additional_context: str | None, word_target: int
 ) -> str:
     lines = [
@@ -39,6 +39,18 @@ def _build_drafting_note(
         f"Target length: approximately {word_target} words.",
     ]
     return "\n".join(line for line in lines if line)
+
+
+def _build_drafting_note(
+    proposal_title: str,
+    client_name: str,
+    additional_context: str | None,
+    word_target: int,
+    outline: list[str] | None,
+) -> str:
+    common_note = _build_common_note(proposal_title, client_name, additional_context, word_target)
+    outline_instruction = build_outline_instruction(outline)
+    return "\n\n".join(part for part in [common_note, outline_instruction] if part)
 
 
 async def generate_proposal_stream(
@@ -87,7 +99,6 @@ async def generate_proposal_stream(
         )
 
     word_target = max((page_count * WORDS_PER_PAGE) // len(SECTION_DEFINITIONS), MIN_SECTION_WORD_TARGET)
-    drafting_note = _build_drafting_note(proposal_title, client_name, additional_context, word_target)
 
     persisted_sections: list[dict] = []
     try:
@@ -98,7 +109,9 @@ async def generate_proposal_stream(
                 "key": definition["key"],
                 "title": definition["title"],
                 "query_fields": definition["query_fields"],
-                "drafting_note": drafting_note,
+                "drafting_note": _build_drafting_note(
+                    proposal_title, client_name, additional_context, word_target, definition.get("outline"),
+                ),
                 "retrieved_chunks": [],
             }
             section_state["retrieved_chunks"] = await retrieve_chunks_for_section(
