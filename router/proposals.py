@@ -20,7 +20,6 @@ from database.models import Proposal, RequirementDocument
 from generation.proposal_generator import generate_proposal_stream
 from schemas.proposal import ProposalGenerateRequest, ProposalResponse
 from database.models import Proposal, ProposalSection, RequirementDocument
-from generation.graph import stream_proposal_generation
 from schemas.proposal import (
     ProposalGenerateRequest,
     ProposalResponse,
