@@ -69,7 +69,6 @@ class ExportFormat(str, Enum):
 class ProposalExportRequest(BaseModel):
     template_id: int
     format: ExportFormat
-    email: Optional[EmailStr] = None
 
 
 class ProposalExportEmailResponse(BaseModel):

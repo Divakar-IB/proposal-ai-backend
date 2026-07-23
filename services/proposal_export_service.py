@@ -4,9 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.crud import get_proposal_by_id, update_proposal
 from database.db_enum import ProposalStatus
 from database.models import Proposal
-from generation.markdown_sections import assemble_markdown
-from rendering.renderer import render_docx, render_pdf
-from rendering.templates import get_template
+from generation.markdown_sections import assemble_markdown, markdown_to_json
+from rendering.html_renderer import render_proposal_html
+from rendering.html_templates import get_html_template_path
+from rendering.renderer import render_docx_from_html, render_pdf_from_html
 from schemas.proposal import ExportFormat
 from utilities.email_service import EmailAttachment, send_proposal_export_email
 from utilities.generic import sanitize_filename
@@ -26,36 +27,47 @@ def _proposal_or_404(proposal: Proposal | None) -> Proposal:
     return proposal
 
 
+def _build_proposal_json(proposal: Proposal) -> dict:
+    """sections -> Markdown -> JSON — the same shape Proposal.proposal_json
+    will eventually be frozen into at approval time. Building it live from
+    the current section rows means export works before that approve flow is
+    wired up; once it is, this can be swapped for reading the frozen
+    snapshot (proposal.proposal_json) without touching anything downstream."""
+
+    sections = [
+        {"title": section.title, "content": section.content, "order_index": section.order_index}
+        for section in proposal.sections
+    ]
+    markdown = assemble_markdown(proposal.title, sections)
+    return markdown_to_json(markdown)
+
+
 async def render_proposal_document(
     db: AsyncSession, proposal_id: int, template_id: int, export_format: ExportFormat
 ) -> tuple[Proposal, bytes, str, str]:
-    """Renders the proposal's stored proposal_json (the frozen, approved
-    snapshot — never the live/mutable section rows) through the selected
-    template. Returns (proposal, file_bytes, filename, content_type) so both
-    the direct-download and email flows can share this single code path."""
+    """sections -> Markdown -> JSON -> HTML (the selected html/template_N.html
+    Jinja template) -> PDF (WeasyPrint) or DOCX (Pandoc). Not gated on
+    approval right now — that gate goes back in once the review/approve flow
+    is wired up end-to-end; for now this always renders straight from the
+    live section rows."""
 
     proposal = _proposal_or_404(await get_proposal_by_id(db, proposal_id))
 
-    if not proposal.is_approved or not proposal.proposal_json:
+    if not proposal.sections:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Proposal must be approved before it can be exported",
+            status_code=status.HTTP_409_CONFLICT, detail="Proposal has no generated sections to export"
         )
 
-    template = get_template(template_id)
-    if template is None:
+    if get_html_template_path(template_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
 
-    markdown = assemble_markdown(
-        proposal.proposal_json.get("title", proposal.title),
-        proposal.proposal_json.get("sections", []),
-    )
+    proposal_json = _build_proposal_json(proposal)
+    html = render_proposal_html(proposal_json, template_id)
 
     try:
-        if export_format == ExportFormat.PDF:
-            content = render_pdf(markdown, template)
-        else:
-            content = render_docx(markdown, template)
+        content = (
+            render_pdf_from_html(html) if export_format == ExportFormat.PDF else render_docx_from_html(html)
+        )
     except Exception:
         logger.exception(
             "proposal export rendering failed | proposal_id=%s template_id=%s format=%s",
@@ -76,12 +88,12 @@ async def render_proposal_document(
     return proposal, content, filename, _CONTENT_TYPES[export_format]
 
 
-async def export_and_email_proposal(
-    db: AsyncSession, proposal_id: int, template_id: int, export_format: ExportFormat, email: str
-) -> Proposal:
-    proposal, content, filename, content_type = await render_proposal_document(
-        db, proposal_id, template_id, export_format
-    )
+async def email_rendered_proposal(
+    email: str, proposal: Proposal, content: bytes, filename: str, content_type: str
+) -> None:
+    """Emails an already-rendered export — kept separate from
+    render_proposal_document so the caller can render once and both return
+    the binary in the response *and* email it, instead of rendering twice."""
 
     try:
         await send_proposal_export_email(
@@ -91,5 +103,3 @@ async def export_and_email_proposal(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to send proposal export email"
         )
-
-    return proposal
