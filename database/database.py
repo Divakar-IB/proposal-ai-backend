@@ -23,7 +23,7 @@ engine = create_async_engine(
     pool_size=10,
     max_overflow=20,
     pool_recycle=1800,
-    # connect_args={"ssl": True},
+    connect_args={"ssl": True},
 )
 
 SessionLocal = sessionmaker(
