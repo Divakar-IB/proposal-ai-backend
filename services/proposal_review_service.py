@@ -1,9 +1,12 @@
 import json
+from datetime import datetime
+from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.crud import (
+    build_proposals_query,
     get_proposal_by_id,
     get_proposal_section_by_id,
     get_proposal_sections_by_ids,
@@ -20,6 +23,7 @@ from generation.requirement_context import build_combined_requirements_json
 from generation.sections import SECTION_DEFINITIONS, build_outline_instruction
 from schemas.proposal import SectionEditItem
 from utilities.logger import get_logger
+from utilities.pagination import paginate
 
 logger = get_logger(__name__)
 
@@ -215,3 +219,31 @@ async def approve_proposal(db: AsyncSession, proposal_id: int) -> Proposal:
         proposal_json=proposal_json,
         is_approved=True,
     )
+
+
+async def list_proposals(
+    db: AsyncSession,
+    *,
+    search: Optional[str] = None,
+    proposal_status: Optional[ProposalStatus] = None,
+    created_by: Optional[int] = None,
+    created_from: Optional[datetime] = None,
+    created_to: Optional[datetime] = None,
+    page: int = 1,
+    limit: int = 10,
+) -> dict:
+    """Search/filter/paginate proposals for the listing view, newest first.
+    Reuses the same query-builder + paginate() pattern already used by the
+    knowledge document listing endpoint (GET /document/list) — see
+    database.crud.build_proposals_query and utilities.pagination.paginate.
+    Returned "data" entries are Proposal ORM objects; the router maps them
+    to ProposalResponse, same as every other endpoint in this file."""
+
+    query = build_proposals_query(
+        search=search,
+        proposal_status=proposal_status,
+        created_by=created_by,
+        created_from=created_from,
+        created_to=created_to,
+    )
+    return await paginate(db, query, page=page, limit=limit)

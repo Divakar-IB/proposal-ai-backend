@@ -1,11 +1,11 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from database.db_enum import DocumentAvailability
+from database.db_enum import DocumentAvailability, ProposalStatus
 from database.models import (
     Category,
     KnowledgeChunk,
@@ -190,6 +190,28 @@ async def get_proposal_by_id(db: AsyncSession, proposal_id: int) -> Proposal | N
         .filter(Proposal.id == proposal_id, Proposal.is_active.is_(True))
     )
     return result.scalars().first()
+
+
+def build_proposals_query(
+    search: Optional[str] = None,
+    proposal_status: Optional[ProposalStatus] = None,
+    created_by: Optional[int] = None,
+    created_from: Optional[datetime] = None,
+    created_to: Optional[datetime] = None,
+) -> Select:
+    query = select(Proposal).filter(Proposal.is_active.is_(True))
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(or_(Proposal.title.ilike(pattern), Proposal.client_name.ilike(pattern)))
+    if proposal_status is not None:
+        query = query.filter(Proposal.status == proposal_status)
+    if created_by is not None:
+        query = query.filter(Proposal.user_id == created_by)
+    if created_from is not None:
+        query = query.filter(Proposal.created_at >= created_from)
+    if created_to is not None:
+        query = query.filter(Proposal.created_at <= created_to)
+    return query.order_by(Proposal.created_at.desc())
 
 
 async def update_proposal(db: AsyncSession, proposal: Proposal, **fields) -> Proposal:

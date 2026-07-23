@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -22,6 +23,7 @@ from schemas.proposal import (
     ProposalDetailResponse,
     ProposalExportResponse,
     ProposalGenerateRequest,
+    ProposalListResponse,
     ProposalResponse,
     ProposalSectionMinimal,
     ProposalSectionResponse,
@@ -232,6 +234,38 @@ async def list_export_templates(current_user: dict = Depends(get_current_user)):
     templates" isn't swallowed by that dynamic path."""
 
     return EXPORT_TEMPLATES
+
+
+@router.get("", response_model=ProposalListResponse)
+async def list_proposals(
+    search: Optional[str] = None,
+    status: Optional[ProposalStatus] = None,
+    created_by: Optional[int] = None,
+    created_from: Optional[datetime] = None,
+    created_to: Optional[datetime] = None,
+    page: int = 1,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Lists proposals for the dashboard — search over title/client_name,
+    optional status/created_by/created-date filters, paginated, newest
+    first. Reuses the same query-builder + paginate() pattern as
+    GET /document/list (see database.crud.build_proposals_query and
+    services.proposal_review_service.list_proposals)."""
+
+    result = await proposal_review_service.list_proposals(
+        db,
+        search=search,
+        proposal_status=status,
+        created_by=created_by,
+        created_from=created_from,
+        created_to=created_to,
+        page=page,
+        limit=limit,
+    )
+    result["data"] = [_proposal_response(proposal) for proposal in result["data"]]
+    return result
 
 
 @router.get("/{proposal_id}", response_model=ProposalDetailResponse)

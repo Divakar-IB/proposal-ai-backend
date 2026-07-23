@@ -61,6 +61,14 @@ class ProposalResponse(BaseModel):
         from_attributes = True
 
 
+class ProposalListResponse(BaseModel):
+    page: int
+    limit: int
+    total_pages: int
+    total: int
+    data: list[ProposalResponse]
+
+
 class ExportFormat(str, Enum):
     PDF = "pdf"
     DOCX = "docx"
