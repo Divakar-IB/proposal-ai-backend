@@ -112,7 +112,12 @@ def _proposal_detail_response(proposal: Proposal) -> ProposalDetailResponse:
         client_name=proposal.client_name,
         status=proposal.status,
         sections=[
-            ProposalSectionMinimal(id=section.id, title=section.title, content=section.content)
+            ProposalSectionMinimal(
+                id=section.id,
+                title=section.title,
+                content=section.content,
+                order=section.order_index,
+            )
             for section in proposal.sections
         ],
     )
@@ -231,9 +236,19 @@ async def generate_proposal_endpoint(
 async def list_export_templates(current_user: dict = Depends(get_current_user)):
     """Hardcoded list of available DOCX/PDF export styles — see
     constants.EXPORT_TEMPLATES. Declared before /{proposal_id} so "export-
-    templates" isn't swallowed by that dynamic path."""
+    templates" isn't swallowed by that dynamic path. preview_url is a
+    presigned S3 URL generated fresh on every call (not stored) so it never
+    goes stale."""
 
-    return EXPORT_TEMPLATES
+    return [
+        ExportTemplateResponse(
+            id=template["id"],
+            name=template["name"],
+            description=template["description"],
+            preview_url=s3_service.generate_presigned_url(template["preview_key"]),
+        )
+        for template in EXPORT_TEMPLATES
+    ]
 
 
 @router.get("", response_model=ProposalListResponse)
@@ -268,18 +283,18 @@ async def list_proposals(
     return result
 
 
-@router.get("/{proposal_id}", response_model=ProposalDetailResponse)
-async def get_proposal(
-    proposal_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """Fetches the full proposal for viewing/review — trimmed to just what
-    the reviewer UI needs: proposal identity/status plus each section's id
-    and content, in order."""
+# @router.get("/{proposal_id}", response_model=ProposalDetailResponse)
+# async def get_proposal(
+#     proposal_id: int,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: dict = Depends(get_current_user),
+# ):
+#     """Fetches the full proposal for viewing/review — trimmed to just what
+#     the reviewer UI needs: proposal identity/status plus each section's id
+#     and content, in order."""
 
-    proposal = await _get_proposal_or_404(db, proposal_id)
-    return _proposal_detail_response(proposal)
+#     proposal = await _get_proposal_or_404(db, proposal_id)
+#     return _proposal_detail_response(proposal)
 
 
 # ------------------------------------------------------------------

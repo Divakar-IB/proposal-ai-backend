@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Modern Template</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #111; width: 794px; min-height: 1123px; }
+
+  /* Cover */
+  .cover {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    padding: 64px 56px 56px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::after {
+    content: "";
+    position: absolute;
+    right: -60px; top: -60px;
+    width: 320px; height: 320px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+  }
+  .cover::before {
+    content: "";
+    position: absolute;
+    right: 40px; bottom: -80px;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.04);
+  }
+  .org-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 32px;
+  }
+  .cover-tag {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.85);
+    padding: 4px 14px;
+    margin-bottom: 20px;
+  }
+  .cover h1 {
+    font-size: 38px;
+    font-weight: 800;
+    line-height: 1.15;
+    margin-bottom: 16px;
+    position: relative;
+    z-index: 1;
+  }
+  .cover-sub {
+    font-size: 15px;
+    color: rgba(255,255,255,0.75);
+    font-weight: 400;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 48px;
+  }
+  .cover-meta {
+    display: flex;
+    gap: 40px;
+    position: relative;
+    z-index: 1;
+    padding-top: 32px;
+    border-top: 1px solid rgba(255,255,255,0.15);
+  }
+  .meta-item label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .meta-item span {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  /* Body */
+  .body { padding: 48px 56px; }
+
+  .section { margin-bottom: 40px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .section-num {
+    width: 28px; height: 28px;
+    background: #4f46e5;
+    color: #fff;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .section h2 {
+    font-size: 17px;
+    font-weight: 700;
+    color: #111;
+  }
+  .section-body {
+    padding-left: 40px;
+  }
+  .section-body p {
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: #444;
+    margin-bottom: 12px;
+  }
+  .accent-bar {
+    width: 3px; height: 100%;
+    background: #4f46e5;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .highlight-box {
+    background: #f5f3ff;
+    border-left: 3px solid #4f46e5;
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    margin: 16px 0;
+    font-size: 13px;
+    color: #4338ca;
+    line-height: 1.6;
+    font-weight: 500;
+  }
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .tag {
+    background: #eef2ff;
+    color: #4f46e5;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 12px;
+  }
+  .divider {
+    height: 1px;
+    background: #f0f0f0;
+    margin: 32px 0;
+  }
+
+  /* Footer */
+  footer {
+    border-top: 1px solid #ececec;
+    padding: 16px 56px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #aaa;
+    margin-top: 24px;
+  }
+  footer .logo { font-weight: 700; color: #4f46e5; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="org-label">InnoBoon Technologies</div>
+  <div class="cover-tag">Business Proposal</div>
+  <h1>Cloud Infrastructure &amp;<br/>Digital Transformation</h1>
+  <p class="cover-sub">Prepared exclusively for Meridian Financial Services</p>
+  <div class="cover-meta">
+    <div class="meta-item">
+      <label>Prepared for</label>
+      <span>Meridian Financial Services</span>
+    </div>
+    <div class="meta-item">
+      <label>Date</label>
+      <span>July 2026</span>
+    </div>
+    <div class="meta-item">
+      <label>Reference</label>
+      <span>RFP-2026-0041</span>
+    </div>
+  </div>
+</div>
+
+<div class="body">
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">01</div>
+      <h2>Executive Summary</h2>
+    </div>
+    <div class="section-body">
+      <p>InnoBoon Technologies proposes a phased cloud migration and digital transformation engagement for Meridian Financial Services. Our approach leverages proven AWS Landing Zone architecture, zero-downtime deployment pipelines, and AI-assisted monitoring to deliver measurable operational improvements within 20 weeks.</p>
+      <div class="highlight-box">
+        Our lift-shift-optimize model reduces infrastructure costs by an estimated 34% while increasing system availability from 99.7% to 99.99% SLA.
+      </div>
+      <p>With over 120 successful cloud migrations in the BFSI sector, InnoBoon brings the domain expertise and technical depth Meridian requires at this critical juncture of its digital journey.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">02</div>
+      <h2>Technical Approach</h2>
+    </div>
+    <div class="section-body">
+      <p>Our migration follows a three-phase model: Assessment (Weeks 1–4), Parallel-Run Migration (Weeks 5–14), and Optimisation (Weeks 15–20). Each phase has defined entry/exit criteria and rollback procedures to ensure zero business disruption.</p>
+      <p>Core banking workloads migrate using blue-green deployment with automated traffic shifting. Data replication leverages AWS Database Migration Service with Change Data Capture to maintain transactional consistency throughout the cutover window.</p>
+      <div class="tags">
+        <span class="tag">AWS Landing Zone</span>
+        <span class="tag">Blue-Green Deployment</span>
+        <span class="tag">CDC Replication</span>
+        <span class="tag">Zero Downtime</span>
+        <span class="tag">SOC2 Compliant</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-num">03</div>
+      <h2>Security &amp; Compliance</h2>
+    </div>
+    <div class="section-body">
+      <p>Security is embedded at every layer of the proposed architecture. InnoBoon holds active SOC2 Type II and ISO 27001 certifications. All data in transit and at rest is encrypted using AES-256. IAM policies follow least-privilege principles enforced through AWS Organizations SCPs.</p>
+      <p>Compliance posture aligns with RBI IT Framework, PCI-DSS Level 1, and GDPR requirements as applicable to Meridian's cross-border operations.</p>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span class="logo">InnoBoon Technologies</span>
+  <span>Confidential · Page 1 of 8</span>
+  <span>July 2026</span>
+</footer>
+
+</body>
+</html>
+

@@ -62,7 +62,9 @@ async def render_proposal_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
 
     proposal_json = _build_proposal_json(proposal)
-    html = render_proposal_html(proposal_json, template_id)
+    html = render_proposal_html(
+        proposal_json, template_id, client_name=proposal.client_name, proposal_id=proposal.id
+    )
 
     try:
         content = (

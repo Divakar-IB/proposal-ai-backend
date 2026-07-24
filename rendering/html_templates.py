@@ -8,6 +8,9 @@ _HTML_DIR = Path(__file__).resolve().parent.parent / "html"
 # ProposalExportRequest.template_id.
 HTML_TEMPLATES: dict[int, str] = {
     1: "template_1.html",
+    2: "minimal.html",
+    3: "corporate_preview.html",
+    4: "executive_preview.html",
 }
 
 

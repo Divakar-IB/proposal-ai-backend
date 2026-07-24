@@ -10,7 +10,7 @@ from middleware.middleware import setup_middleware
 from router.auth_router import router as auth_router
 from router import category
 from router import documents
-from router import proposals
+from router import proposals, proposal_temp
 
 
 @asynccontextmanager
@@ -34,6 +34,7 @@ app.include_router(auth_router)
 app.include_router(category.router)
 app.include_router(documents.router)
 app.include_router(proposals.router)
+app.include_router(proposal_temp.router)
 
 @app.get("/")
 def root():

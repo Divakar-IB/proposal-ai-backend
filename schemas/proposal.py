@@ -1,10 +1,15 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, EmailStr
 
 from database.db_enum import GenerationMode, ProposalSectionStatus, ProposalStatus
+from schemas.requirement_document import (
+    CapabilityTagOut,
+    KnowledgeMatch,
+    RequirementDocumentResponse,
+)
 
 
 class ProposalGenerateRequest(BaseModel):
@@ -88,9 +93,19 @@ class ProposalSectionMinimal(BaseModel):
     id: int
     title: str
     content: Optional[str] = None
+    order: int
 
     class Config:
         from_attributes = True
+
+
+class ProposalSectionOrderItem(BaseModel):
+    id: int
+    order: int
+
+
+class ProposalSectionsReorderRequest(BaseModel):
+    sections: list[ProposalSectionOrderItem]
 
 
 class ProposalDetailResponse(BaseModel):
@@ -117,3 +132,34 @@ class ExportTemplateResponse(BaseModel):
     name: str
     description: str
     preview_url: Optional[str] = None
+
+
+class ProposalDetailsStep(BaseModel):
+    proposal_name: str
+    client_name: str
+    additional_context: Optional[str] = None
+    files: list[RequirementDocumentResponse] = []
+
+
+class SummaryStep(BaseModel):
+    summary: Optional[str] = None
+    knowledge_matches: list[KnowledgeMatch] = []
+    capability_tags: list[CapabilityTagOut] = []
+
+
+class GenerationConfigStep(BaseModel):
+    generation_mode: Optional[GenerationMode] = None
+    page_count: Optional[int] = None
+
+
+class GenerationStep(BaseModel):
+    status: Literal["generating", "done", "failed"]
+
+
+class ProposalStateResponse(BaseModel):
+    proposal_id: int
+    current_step: str
+    proposal_details: Optional[ProposalDetailsStep] = None
+    summary: Optional[SummaryStep] = None
+    generation_config: Optional[GenerationConfigStep] = None
+    generation: Optional[GenerationStep] = None

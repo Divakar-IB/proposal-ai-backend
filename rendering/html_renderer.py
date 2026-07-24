@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pypandoc
 from jinja2 import Environment, FileSystemLoader
 
@@ -14,10 +16,13 @@ def _section_to_html(section: dict) -> str:
     return pypandoc.convert_text(section.get("content") or "", "html", format="md")
 
 
-def render_proposal_html(proposal_json: dict, template_id: int) -> str:
+def render_proposal_html(
+    proposal_json: dict, template_id: int, client_name: str, proposal_id: int
+) -> str:
     """JSON -> HTML: renders the selected html/template_N.html file with the
-    proposal's title and sections. Each section's Markdown content is
-    pre-converted to HTML before being handed to the template."""
+    proposal's title, client, reference, and sections. Each section's
+    Markdown content is pre-converted to HTML before being handed to the
+    template."""
 
     template_path = get_html_template_path(template_id)
     if template_path is None or not template_path.is_file():
@@ -31,4 +36,10 @@ def render_proposal_html(proposal_json: dict, template_id: int) -> str:
         for section in proposal_json.get("sections", [])
     ]
 
-    return template.render(proposal_title=proposal_json.get("title", ""), sections=sections)
+    return template.render(
+        proposal_title=proposal_json.get("title", ""),
+        client_name=client_name,
+        reference=f"PROP-{proposal_id}",
+        generated_date=datetime.now().strftime("%d %B %Y"),
+        sections=sections,
+    )
