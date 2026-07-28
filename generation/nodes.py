@@ -1,275 +1,158 @@
 import json
+from typing import Any, Iterator, Optional
 
-from database.crud import (
-    create_proposal_sections,
-    get_proposal_by_id,
-    get_requirement_document_by_id,
-    update_proposal,
-    update_requirement_document,
-)
-from database.database import db_session
-from database.db_enum import DocumentStatus, ProposalSectionStatus, ProposalStatus
-from database.models import ProposalSection, RequirementDocument
+from database.db_enum import ProposalSectionStatus
 from embedding.embedder import embed_query
-from extraction.factory import run_extraction
-from generation.prompts import (
-    DRAFT_SYSTEM_PROMPT,
-    DRAFT_USER_TEMPLATE,
-    QUALITY_CHECK_SYSTEM_PROMPT,
-    QUALITY_CHECK_USER_TEMPLATE,
-    build_context_block,
-)
 from generation.schema import QualityCheckResult
-from generation.sections import SECTION_DEFINITIONS
-from generation.state import ProposalGenerationState
-from llm.chat_client import NovitaChatClient
-from requirements_parsing.parser import parse_requirements as run_requirements_parser
-from utilities.logger import get_logger
-from utilities.s3_service import S3Service
+from llm.chat_client import GroqChatClient
+from prompts.proposal_generation import DRAFT_SYSTEM_PROMPT, DRAFT_USER_TEMPLATE, build_context_block
+from prompts.proposal_review import (
+    QUALITY_CHECK_SYSTEM_PROMPT,
+    QUALITY_CHECK_TOOL,
+    QUALITY_CHECK_USER_TEMPLATE,
+    TOOL_NAME as QUALITY_CHECK_TOOL_NAME,
+)
 from vectorstore.knowledge_store import query_chunks
 
-logger = get_logger(__name__)
-s3_service = S3Service()
-
-TOP_K_CHUNKS_PER_SECTION = 5
-
-_QUALITY_CHECK_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "report_quality_check",
-        "description": "Report the quality check verdict for a drafted proposal section.",
-        "parameters": QualityCheckResult.model_json_schema(),
-    },
-}
+TOP_K_SECTION_CHUNKS = 8
 
 
-# ------------------------------------------------------------------
-# Node 1: parse_requirements
-# ------------------------------------------------------------------
+def _build_query_text(section_state: dict, requirements: dict) -> str:
+    """`requirements` is keyed by source filename (see
+    generation/requirement_context.build_combined_requirements_json) — each
+    section pulls its own query_fields out of every document's structured
+    requirements and folds them into one retrieval query."""
 
-async def parse_requirements(state: ProposalGenerationState) -> ProposalGenerationState:
-    document_id = state["requirement_document_id"]
+    field_names = [name.strip() for name in section_state["query_fields"].split(",")]
+    values: list[str] = []
+    for document_requirements in requirements.values():
+        if not isinstance(document_requirements, dict):
+            continue
+        for field in field_names:
+            value = document_requirements.get(field)
+            if value:
+                values.append(str(value))
 
-    async with db_session() as db:
-        document = await get_requirement_document_by_id(db, document_id)
-        if document is None:
-            return {**state, "error": f"requirement document {document_id} not found"}
+    return "\n".join([section_state["title"], *values])
 
-        if not document.parsed_data:
-            logger.info("requirement document not yet parsed, running Path B inline | document_id=%s", document_id)
-            requirements = await _run_path_b(db, document)
-        else:
-            requirements = document.parsed_data
 
-    sections = [
+async def retrieve_chunks_for_section(
+    section_state: dict[str, Any],
+    requirements: dict,
+    category_ids: Optional[list[int]],
+    has_knowledge: bool,
+) -> list[dict]:
+    """Per-section retrieval — each section queries the knowledge base with
+    its own query_fields-derived text, scoped to the proposal's
+    category_ids, rather than one retrieval pass shared across the whole
+    document."""
+
+    if not has_knowledge:
+        return []
+
+    query_text = _build_query_text(section_state, requirements)
+    if not query_text.strip():
+        return []
+
+    query_embedding = embed_query(query_text)
+    return query_chunks(query_embedding, top_k=TOP_K_SECTION_CHUNKS, category_ids=category_ids)
+
+
+def _build_draft_messages(section_state: dict[str, Any], requirements_json: str) -> list[dict]:
+    return [
+        {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
         {
-            "key": definition["key"],
-            "title": definition["title"],
-            "query_fields": definition["query_fields"],
-            "retrieved_chunks": [],
-            "content": None,
-            "citations": [],
-            "status": "pending",
-            "retry_count": 0,
-            "feedback": None,
-        }
-        for definition in SECTION_DEFINITIONS
+            "role": "user",
+            "content": DRAFT_USER_TEMPLATE.format(
+                section_title=section_state["title"],
+                drafting_note=f"{section_state['drafting_note']}\n" if section_state.get("drafting_note") else "",
+                requirements_json=requirements_json,
+                context_block=build_context_block(section_state["retrieved_chunks"]),
+                feedback=section_state.get("feedback") or "(none — first draft)",
+            ),
+        },
     ]
 
-    return {**state, "requirements": requirements, "sections": sections}
+
+def section_citations(section_state: dict[str, Any]) -> list[dict]:
+    return [
+        {
+            "breadcrumb": chunk["breadcrumb"],
+            "source_filename": chunk.get("source_filename"),
+        }
+        for chunk in section_state["retrieved_chunks"]
+    ]
 
 
-async def _run_path_b(db, document: RequirementDocument) -> dict:
-    temp_path = s3_service.download_to_tempfile(document.file_path, suffix=f".{document.extension}")
-    try:
-        extracted = run_extraction(temp_path, document.file_name, document.extension)
-        requirements_schema = run_requirements_parser(extracted.markdown)
-        requirements = requirements_schema.model_dump()
-        await update_requirement_document(
-            db, document,
-            extracted_markdown=extracted.markdown,
-            parsed_data=requirements,
-            status=DocumentStatus.PARSED,
-        )
-        return requirements
-    finally:
-        from pathlib import Path
-        Path(temp_path).unlink(missing_ok=True)
+def draft_one_section(section_state: dict[str, Any], requirements_json: str) -> tuple[str, list[dict]]:
+    """One-shot draft of a single section's Markdown body from its retrieved
+    context and the structured requirements, sharing the same drafting
+    prompt (prompts/proposal_generation.py) the automated pipeline uses."""
+
+    messages = _build_draft_messages(section_state, requirements_json)
+    response = GroqChatClient.complete(messages=messages, temperature=0.4)
+    content = (response.choices[0].message.content or "").strip()
+
+    return content, section_citations(section_state)
 
 
-# ------------------------------------------------------------------
-# Node 2: retrieve_context
-# ------------------------------------------------------------------
+def draft_one_section_stream(section_state: dict[str, Any], requirements_json: str) -> Iterator[str]:
+    """Same draft as draft_one_section, but yields text deltas as they
+    arrive instead of waiting for the full completion — used for
+    section-by-section SSE streaming. Citations still come from
+    `section_citations` after the caller has collected the full content,
+    since they're derived from retrieval, not from the completion itself."""
 
-async def retrieve_context(state: ProposalGenerationState) -> ProposalGenerationState:
-    requirements = state["requirements"]
-    category_ids = state.get("category_ids")
-    updated_sections = []
-
-    for section in state["sections"]:
-        query_text = _build_query_text(section, requirements)
-        query_embedding = embed_query(query_text)
-        chunks = query_chunks(query_embedding, top_k=TOP_K_CHUNKS_PER_SECTION, category_ids=category_ids)
-        updated_sections.append({**section, "retrieved_chunks": chunks})
-
-    return {**state, "sections": updated_sections}
+    messages = _build_draft_messages(section_state, requirements_json)
+    yield from GroqChatClient.stream_complete(messages, temperature=0.4)
 
 
-def _build_query_text(section: dict, requirements: dict) -> str:
-    field_names = [f.strip() for f in section["query_fields"].split(",")]
-    values = []
-    for name in field_names:
-        value = requirements.get(name)
-        if isinstance(value, list):
-            values.append(", ".join(str(v) for v in value))
-        elif value:
-            values.append(str(value))
-    return f"{section['title']}: " + " | ".join(values)
+def run_quality_check(section_state: dict[str, Any], requirements_json: str) -> QualityCheckResult:
+    """Reviews a drafted section against the client requirements and
+    retrieved context, returning an approve/revise verdict plus a
+    confidence score, via the shared review prompt (prompts/proposal_review.py)."""
+
+    messages = [
+        {"role": "system", "content": QUALITY_CHECK_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": QUALITY_CHECK_USER_TEMPLATE.format(
+                section_title=section_state["title"],
+                requirements_json=requirements_json,
+                context_block=build_context_block(section_state["retrieved_chunks"]),
+                content=section_state["content"],
+            ),
+        },
+    ]
+
+    response = GroqChatClient.complete(
+        messages=messages,
+        tools=[QUALITY_CHECK_TOOL],
+        tool_choice={"type": "function", "function": {"name": QUALITY_CHECK_TOOL_NAME}},
+    )
+
+    tool_calls = response.choices[0].message.tool_calls
+    if not tool_calls:
+        raise ValueError("model returned no tool call for section quality check")
+
+    parsed = json.loads(tool_calls[0].function.arguments)
+    return QualityCheckResult.model_validate(parsed)
 
 
-# ------------------------------------------------------------------
-# Node 3: draft_section
-# ------------------------------------------------------------------
+def decide_section_status(
+    result: QualityCheckResult, force_approve: bool = False
+) -> tuple[str, Optional[str], bool]:
+    """Maps a quality-check verdict to (status, feedback-to-seed-the-next-draft,
+    review_flag). `force_approve` lets a caller with a bounded retry budget
+    (the automated pipeline) still land on a terminal APPROVED state instead
+    of looping forever — flagged for human review since it wasn't a clean
+    pass. The manual regenerate endpoint never force-approves: it's a single
+    bounded pass, so an unapproved result just stays NEEDS_REVISION."""
 
-async def draft_section(state: ProposalGenerationState) -> ProposalGenerationState:
-    requirements_json = json.dumps(state["requirements"], indent=2)
-    updated_sections = []
+    if result.approved:
+        return ProposalSectionStatus.APPROVED.value, None, False
 
-    for section in state["sections"]:
-        if section["status"] not in ("pending", "needs_revision"):
-            updated_sections.append(section)
-            continue
+    if force_approve:
+        return ProposalSectionStatus.APPROVED.value, result.feedback, True
 
-        context_block = build_context_block(section["retrieved_chunks"])
-        user_prompt = DRAFT_USER_TEMPLATE.format(
-            section_title=section["title"],
-            requirements_json=requirements_json,
-            context_block=context_block,
-            feedback=section["feedback"] or "(none — first draft)",
-        )
-
-        response = NovitaChatClient.complete(
-            messages=[
-                {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.4,
-        )
-        content = response.choices[0].message.content
-
-        citations = [
-            {
-                "chunk_document_id": chunk.get("document_id"),
-                "breadcrumb": chunk.get("breadcrumb"),
-                "page_number": chunk.get("page_number"),
-            }
-            for chunk in section["retrieved_chunks"]
-        ]
-
-        updated_sections.append({
-            **section,
-            "content": content,
-            "citations": citations,
-            "status": "drafted",
-            "retry_count": section["retry_count"] + 1,
-        })
-
-    return {**state, "sections": updated_sections}
-
-
-# ------------------------------------------------------------------
-# Node 4: quality_check
-# ------------------------------------------------------------------
-
-async def quality_check(state: ProposalGenerationState) -> ProposalGenerationState:
-    requirements_json = json.dumps(state["requirements"], indent=2)
-    max_retries = state["max_retries"]
-    updated_sections = []
-
-    for section in state["sections"]:
-        if section["status"] != "drafted":
-            updated_sections.append(section)
-            continue
-
-        context_block = build_context_block(section["retrieved_chunks"])
-        user_prompt = QUALITY_CHECK_USER_TEMPLATE.format(
-            section_title=section["title"],
-            requirements_json=requirements_json,
-            context_block=context_block,
-            content=section["content"],
-        )
-
-        response = NovitaChatClient.complete(
-            messages=[
-                {"role": "system", "content": QUALITY_CHECK_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            tools=[_QUALITY_CHECK_TOOL],
-            tool_choice={"type": "function", "function": {"name": "report_quality_check"}},
-        )
-        tool_calls = response.choices[0].message.tool_calls
-        result = QualityCheckResult.model_validate(json.loads(tool_calls[0].function.arguments))
-
-        if result.approved or section["retry_count"] >= max_retries:
-            status = "approved"
-            feedback = None if result.approved else f"Force-approved after {max_retries} revisions: {result.feedback}"
-        else:
-            status = "needs_revision"
-            feedback = result.feedback
-
-        updated_sections.append({**section, "status": status, "feedback": feedback})
-
-    return {**state, "sections": updated_sections}
-
-
-def needs_another_draft_pass(state: ProposalGenerationState) -> str:
-    if any(section["status"] == "needs_revision" for section in state["sections"]):
-        return "draft_section"
-    return "compile_proposal"
-
-
-# ------------------------------------------------------------------
-# Node 5: compile_proposal
-# ------------------------------------------------------------------
-
-async def compile_proposal(state: ProposalGenerationState) -> ProposalGenerationState:
-    proposal_id = state["proposal_id"]
-    markdown = _assemble_markdown(state)
-
-    async with db_session() as db:
-        proposal = await get_proposal_by_id(db, proposal_id)
-        if proposal is None:
-            return {**state, "error": f"proposal {proposal_id} not found"}
-
-        s3_key = f"output/proposals/{state['user_id']}/{proposal_id}/proposal.md"
-        s3_service.upload_bytes(markdown.encode("utf-8"), s3_key, content_type="text/markdown")
-
-        section_rows = [
-            ProposalSection(
-                proposal_id=proposal_id,
-                section_key=section["key"],
-                order_index=index,
-                content=section["content"],
-                citations=section["citations"],
-                status=ProposalSectionStatus(section["status"]),
-                retry_count=section["retry_count"],
-            )
-            for index, section in enumerate(state["sections"])
-        ]
-        await create_proposal_sections(db, section_rows)
-
-        all_approved = all(section["status"] == "approved" for section in state["sections"])
-        await update_proposal(
-            db, proposal,
-            markdown_path=s3_key,
-            status=ProposalStatus.REVIEW if all_approved else ProposalStatus.DRAFT,
-        )
-
-    return state
-
-
-def _assemble_markdown(state: ProposalGenerationState) -> str:
-    parts = []
-    for section in state["sections"]:
-        parts.append(f"## {section['title']}\n\n{section['content'] or ''}")
-    return "\n\n".join(parts)
+    return ProposalSectionStatus.NEEDS_REVISION.value, result.feedback, True

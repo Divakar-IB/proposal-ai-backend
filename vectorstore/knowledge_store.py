@@ -1,6 +1,8 @@
 from typing import Optional
 from uuid import uuid4
 
+from pinecone.errors.exceptions import NotFoundError
+
 from chunking.models import Chunk
 from vectorstore.pinecone_client import PineconeService
 
@@ -45,10 +47,14 @@ def upsert_chunks(
 
 
 def delete_document_vectors(document_id: int) -> None:
-    """Removes all vectors for a document (e.g. before re-processing a new version)."""
+    """Removes all vectors for a document (e.g. before re-processing a new version).
+    No-ops if the namespace doesn't exist yet (first-ever upload for this index)."""
 
     index = PineconeService.get_index()
-    index.delete(filter={"document_id": document_id})
+    try:
+        index.delete(filter={"document_id": document_id})
+    except NotFoundError:
+        pass
 
 
 def query_chunks(

@@ -1,7 +1,5 @@
-from embedding.novita_client import NovitaEmbeddingClient
+from embedding.hf_inference_client import HFInferenceEmbeddingClient
 
-# Kept well under Novita's per-request payload limits and gives reasonable
-# progress granularity for logging on large documents.
 BATCH_SIZE = 32
 
 
@@ -12,7 +10,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     embeddings: list[list[float]] = []
     for start in range(0, len(texts), BATCH_SIZE):
         batch = texts[start:start + BATCH_SIZE]
-        embeddings.extend(NovitaEmbeddingClient.embed(batch))
+        embeddings.extend(HFInferenceEmbeddingClient.embed(batch))
     return embeddings
 
 

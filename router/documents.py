@@ -194,6 +194,7 @@ async def process_document(
     document_id: int,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     document = await get_knowledge_document_by_id(db, document_id)
     if document is None:
@@ -213,6 +214,7 @@ async def list_documents(
     page: int = 1,
     limit: int = 10,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     query = build_knowledge_documents_query(
         category_id=category_id, search=search, knowledge_status=status
@@ -224,6 +226,7 @@ async def list_documents(
 async def get_document(
     document_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     document = await get_knowledge_document_by_id(db, document_id)
     if document is None:
@@ -235,6 +238,7 @@ async def get_document(
 async def download_document(
     document_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """Streams the file bytes from S3 through the API — forces a browser
     download, unlike the presigned `url` on DocumentResponse which is meant
@@ -270,6 +274,7 @@ async def download_document(
 async def delete_document(
     document_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     document = await get_knowledge_document_by_id(db, document_id)
     if document is None:

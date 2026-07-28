@@ -74,3 +74,38 @@ KNOWLEDGE_CATEGORIES = [
         "description": "AWS Partner, Google Partner, ISO certs, technology vendor relationships, accreditations"
     },
 ]
+
+
+# Proposal DOCX/PDF export styles — the dummy preview HTML files live in S3
+# under "proposal_templates/" (uploaded once, shown as-is so the user can
+# browse sample designs) while the *real* Jinja templates used to render an
+# actual export live locally under html/ (see rendering/html_templates.py).
+# preview_key is the S3 object key; the presigned preview_url is generated
+# fresh per request (see router/proposals.py) instead of being baked in here
+# — a hardcoded presigned URL expires (that's what broke previously).
+EXPORT_TEMPLATES = [
+    {
+        "id": 1,
+        "name": "Modern",
+        "description": "Clean bold headings",
+        "preview_key": "proposal_templates/modern_preview",
+    },
+    {
+        "id": 2,
+        "name": "Minimal",
+        "description": "Typography-first",
+        "preview_key": "proposal_templates/Minimal",
+    },
+    {
+        "id": 3,
+        "name": "Corporate",
+        "description": "Formal structure",
+        "preview_key": "proposal_templates/corporate_preview",
+    },
+    {
+        "id": 4,
+        "name": "Executive",
+        "description": "C-suite summary layout",
+        "preview_key": "proposal_templates/executive_preview",
+    },
+]

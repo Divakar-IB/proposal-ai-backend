@@ -5,12 +5,15 @@ class SectionState(TypedDict):
     key: str
     title: str
     query_fields: str
+    drafting_note: Optional[str]
     retrieved_chunks: list[dict[str, Any]]
     content: Optional[str]
     citations: list[dict[str, Any]]
     status: str  # ProposalSectionStatus value
     retry_count: int
     feedback: Optional[str]
+    confidence_score: Optional[float]
+    review_flag: bool
 
 
 class ProposalGenerationState(TypedDict):

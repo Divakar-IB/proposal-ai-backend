@@ -22,7 +22,7 @@ from database.db_enum import (
     DocumentAvailability,
     ProposalStatus,
     ProposalSectionStatus,
-    # KnowledgeStatus
+    GenerationMode,
 )
 
 
@@ -46,6 +46,8 @@ class User(BasicModel):
     is_first_login: Mapped[bool] = mapped_column(default=True)
     otp_code: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     otp_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    designation: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     knowledge_documents: Mapped[list["KnowledgeDocument"]] = relationship(back_populates="uploader")
     requirement_documents: Mapped[list["RequirementDocument"]] = relationship(back_populates="uploader")
@@ -114,32 +116,48 @@ class RequirementDocument(BasicModel):
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     extension: Mapped[str] = mapped_column(String(20), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    proposal_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("proposals.id"), nullable=True, index=True
+    )
     status: Mapped[DocumentStatus] = mapped_column(
         SAEnum(DocumentStatus), nullable=False, default=DocumentStatus.UPLOADING
     )
     extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     parsed_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    capability_tags: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    knowledge_matches: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
 
     uploader: Mapped["User"] = relationship(back_populates="requirement_documents")
-    proposals: Mapped[list["Proposal"]] = relationship(back_populates="requirement_document")
+    proposal: Mapped[Optional["Proposal"]] = relationship(back_populates="requirement_documents")
 
 
 class Proposal(BasicModel):
     __tablename__ = "proposals"
 
-    requirement_document_id: Mapped[int] = mapped_column(
-        ForeignKey("requirement_documents.id"), nullable=False, index=True
-    )
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    client_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    additional_context: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[ProposalStatus] = mapped_column(
-        SAEnum(ProposalStatus), nullable=False, default=ProposalStatus.DRAFT
+        SAEnum(ProposalStatus), nullable=False, default=ProposalStatus.INPROGRESS
     )
+    generation_mode: Mapped[Optional[GenerationMode]] = mapped_column(
+        SAEnum(GenerationMode), nullable=True
+    )
+    page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     markdown_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_approved: Mapped[bool] = mapped_column(nullable=False, default=False)
+    approved_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    proposal_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     docx_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pdf_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category_ids: Mapped[Optional[list[int]]] = mapped_column(ARRAY(Integer), nullable=True)
 
-    requirement_document: Mapped["RequirementDocument"] = relationship(back_populates="proposals")
+    requirement_documents: Mapped[list["RequirementDocument"]] = relationship(
+        back_populates="proposal", order_by="RequirementDocument.created_at", lazy="selectin"
+    )
     sections: Mapped[list["ProposalSection"]] = relationship(
         back_populates="proposal",
         cascade="all, delete-orphan",
@@ -153,6 +171,7 @@ class ProposalSection(BasicModel):
 
     proposal_id: Mapped[int] = mapped_column(ForeignKey("proposals.id"), nullable=False, index=True)
     section_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     citations: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
@@ -160,5 +179,21 @@ class ProposalSection(BasicModel):
         SAEnum(ProposalSectionStatus), nullable=False, default=ProposalSectionStatus.PENDING
     )
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    confidence_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    review_flag: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     proposal: Mapped["Proposal"] = relationship(back_populates="sections")
+
+
+class OrganizationSettings(BasicModel):
+    """Single-row table: the organization's own branding/contact profile,
+    used on generated proposal cover pages. No field is required — a row
+    may exist with every business column null."""
+
+    __tablename__ = "organization_settings"
+
+    organization_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    default_signee_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    default_signee_designation: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    logo_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

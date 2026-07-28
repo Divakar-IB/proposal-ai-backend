@@ -1,19 +1,34 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from database.db_enum import DocumentAvailability
+from database.db_enum import DocumentAvailability, ProposalStatus
 from database.models import (
+    Category,
     KnowledgeChunk,
     KnowledgeDocument,
+    OrganizationSettings,
     Proposal,
     ProposalSection,
     RequirementDocument,
     User,
 )
+
+
+async def get_active_categories(db: AsyncSession) -> list[Category]:
+    result = await db.execute(select(Category).filter(Category.is_active.is_(True)))
+    return list(result.scalars().all())
+
+
+async def has_any_knowledge_chunks(db: AsyncSession) -> bool:
+    """Cheap existence check — lets callers skip embedding/Pinecone calls
+    entirely when nothing has been indexed yet, rather than querying an
+    empty (or not-yet-created) index and handling it after the fact."""
+    result = await db.execute(select(KnowledgeChunk.id).limit(1))
+    return result.scalars().first() is not None
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
@@ -41,6 +56,18 @@ async def update_user_password(db: AsyncSession, user: User, hashed_password: st
     return user
 
 
+async def update_user(db: AsyncSession, user: User, **fields: Any) -> User:
+    for key, value in fields.items():
+        setattr(user, key, value)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+def build_users_query() -> Select:
+    return select(User).order_by(User.created_at.desc())
+
+
 async def set_user_otp(db: AsyncSession, user: User, hashed_otp: str, expires_at: datetime) -> User:
     user.otp_code = hashed_otp
     user.otp_expires_at = expires_at
@@ -64,6 +91,19 @@ async def get_knowledge_document_by_id(db: AsyncSession, document_id: int) -> Kn
         )
     )
     return result.scalars().first()
+
+
+async def get_knowledge_documents_by_ids(
+    db: AsyncSession, document_ids: list[int]
+) -> list[KnowledgeDocument]:
+    if not document_ids:
+        return []
+    result = await db.execute(
+        select(KnowledgeDocument).filter(
+            KnowledgeDocument.id.in_(document_ids), KnowledgeDocument.is_active.is_(True)
+        )
+    )
+    return list(result.scalars().all())
 
 
 def build_knowledge_documents_query(
@@ -133,6 +173,20 @@ async def create_requirement_document(db: AsyncSession, document: RequirementDoc
     return document
 
 
+async def get_requirement_documents_by_proposal_id(
+    db: AsyncSession, proposal_id: int
+) -> list[RequirementDocument]:
+    result = await db.execute(
+        select(RequirementDocument)
+        .filter(
+            RequirementDocument.proposal_id == proposal_id,
+            RequirementDocument.is_active.is_(True),
+        )
+        .order_by(RequirementDocument.created_at)
+    )
+    return list(result.scalars().all())
+
+
 async def update_requirement_document(
     db: AsyncSession, document: RequirementDocument, **fields
 ) -> RequirementDocument:
@@ -159,6 +213,28 @@ async def get_proposal_by_id(db: AsyncSession, proposal_id: int) -> Proposal | N
     return result.scalars().first()
 
 
+def build_proposals_query(
+    search: Optional[str] = None,
+    proposal_status: Optional[ProposalStatus] = None,
+    created_by: Optional[int] = None,
+    created_from: Optional[datetime] = None,
+    created_to: Optional[datetime] = None,
+) -> Select:
+    query = select(Proposal).filter(Proposal.is_active.is_(True))
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(or_(Proposal.title.ilike(pattern), Proposal.client_name.ilike(pattern)))
+    if proposal_status is not None:
+        query = query.filter(Proposal.status == proposal_status)
+    if created_by is not None:
+        query = query.filter(Proposal.user_id == created_by)
+    if created_from is not None:
+        query = query.filter(Proposal.created_at >= created_from)
+    if created_to is not None:
+        query = query.filter(Proposal.created_at <= created_to)
+    return query.order_by(Proposal.created_at.desc())
+
+
 async def update_proposal(db: AsyncSession, proposal: Proposal, **fields) -> Proposal:
     for key, value in fields.items():
         setattr(proposal, key, value)
@@ -175,6 +251,16 @@ async def create_proposal_sections(
     return sections
 
 
+async def delete_proposal_sections_for_proposal(db: AsyncSession, proposal_id: int) -> None:
+    """Wipes prior sections before storing a fresh generation — avoids stale/
+    duplicate rows on regeneration."""
+
+    result = await db.execute(select(ProposalSection).filter(ProposalSection.proposal_id == proposal_id))
+    for section in result.scalars().all():
+        await db.delete(section)
+    await db.commit()
+
+
 async def update_proposal_section(
     db: AsyncSession, section: ProposalSection, **fields: Any
 ) -> ProposalSection:
@@ -183,3 +269,58 @@ async def update_proposal_section(
     await db.commit()
     await db.refresh(section)
     return section
+
+
+async def get_proposal_section_by_id(db: AsyncSession, section_id: int) -> ProposalSection | None:
+    result = await db.execute(
+        select(ProposalSection).filter(ProposalSection.id == section_id, ProposalSection.is_active.is_(True))
+    )
+    return result.scalars().first()
+
+
+async def get_proposal_sections_by_ids(db: AsyncSession, section_ids: list[int]) -> list[ProposalSection]:
+    result = await db.execute(
+        select(ProposalSection).filter(
+            ProposalSection.id.in_(section_ids), ProposalSection.is_active.is_(True)
+        )
+    )
+    return list(result.scalars().all())
+
+
+# OrganizationSettings — single-row table, no id-based lookup needed
+async def get_organization_settings(db: AsyncSession) -> OrganizationSettings | None:
+    result = await db.execute(
+        select(OrganizationSettings).filter(OrganizationSettings.is_active.is_(True)).limit(1)
+    )
+    return result.scalars().first()
+
+
+async def create_organization_settings(
+    db: AsyncSession, settings: OrganizationSettings
+) -> OrganizationSettings:
+    db.add(settings)
+    await db.commit()
+    await db.refresh(settings)
+    return settings
+
+
+async def update_organization_settings(
+    db: AsyncSession, settings: OrganizationSettings, **fields: Any
+) -> OrganizationSettings:
+    for key, value in fields.items():
+        setattr(settings, key, value)
+    await db.commit()
+    await db.refresh(settings)
+    return settings
+
+
+async def get_categories_by_names(db: AsyncSession, names: list[str]) -> list[Category]:
+    """Resolves LLM-produced capability-tag names against the known Category
+    table — used to default /proposals/generate's category_ids when the
+    caller doesn't pass them explicitly."""
+    if not names:
+        return []
+    result = await db.execute(
+        select(Category).filter(Category.name.in_(names), Category.is_active.is_(True))
+    )
+    return list(result.scalars().all())

@@ -37,5 +37,5 @@ class StructuredOCREngine:
             text = markdown_info.get("markdown_texts") if isinstance(markdown_info, dict) else None
             if text:
                 markdown_parts.append(text)
-
+        # print("\n\n".join(markdown_parts).strip())
         return "\n\n".join(markdown_parts).strip()

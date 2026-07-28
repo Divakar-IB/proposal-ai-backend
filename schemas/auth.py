@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, ValidationInfo
 
 from database.db_enum import UserRole
 
@@ -79,12 +79,20 @@ class LogoutResponse(BaseModel):
 class ResetPasswordRequest(BaseModel):
     current_password: str
     new_password: str
+    confirm_password: str
 
     @field_validator("new_password")
     @classmethod
     def password_min_length(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
+        return v
+
+    @field_validator("confirm_password")
+    @classmethod
+    def passwords_match(cls, v: str, info: ValidationInfo) -> str:
+        if v != info.data.get("new_password"):
+            raise ValueError("New password and confirm password do not match")
         return v
 
 

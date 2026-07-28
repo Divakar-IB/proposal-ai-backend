@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Corporate Template</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #1a1a1a; width: 794px; min-height: 1123px; }
+
+  /* Header bar */
+  .topbar {
+    background: #0f2744;
+    padding: 14px 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar-logo {
+    font-size: 13px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: 0.04em;
+  }
+  .topbar-ref {
+    font-size: 10px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.08em;
+  }
+
+  /* Cover */
+  .cover {
+    background: #0f2744;
+    padding: 60px 48px 56px;
+    color: #fff;
+    position: relative;
+  }
+  .cover-accent {
+    width: 48px;
+    height: 3px;
+    background: #c8972a;
+    border-radius: 2px;
+    margin-bottom: 28px;
+  }
+  .cover h1 {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #fff;
+    margin-bottom: 12px;
+    max-width: 500px;
+  }
+  .cover-sub {
+    font-size: 14px;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 48px;
+  }
+  .cover-table {
+    border-top: 1px solid rgba(255,255,255,0.12);
+    padding-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .cover-table-cell label {
+    display: block;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 5px;
+    font-weight: 700;
+  }
+  .cover-table-cell span {
+    font-size: 13px;
+    color: #fff;
+    font-weight: 500;
+  }
+  .gold { color: #c8972a; }
+
+  /* Body */
+  .body {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    min-height: 760px;
+  }
+  .sidebar {
+    background: #f8f8f8;
+    border-right: 1px solid #e8e8e8;
+    padding: 36px 24px;
+  }
+  .sidebar-title {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: #bbb;
+    margin-bottom: 20px;
+  }
+  .sidebar-nav { list-style: none; }
+  .sidebar-nav li {
+    font-size: 12px;
+    color: #555;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: default;
+    margin-bottom: 2px;
+    line-height: 1.4;
+  }
+  .sidebar-nav li.active {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    color: #0f2744;
+    font-weight: 600;
+    border-left: 3px solid #c8972a;
+    padding-left: 10px;
+  }
+  .sidebar-nav li .num {
+    display: block;
+    font-size: 9px;
+    color: #bbb;
+    font-weight: 400;
+    margin-bottom: 2px;
+  }
+
+  .main { padding: 40px 44px; }
+
+  .section { margin-bottom: 36px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 16px;
+    border-bottom: 2px solid #0f2744;
+    padding-bottom: 10px;
+  }
+  .section h2 {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f2744;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex: 1;
+  }
+  .section-num-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #c8972a;
+    letter-spacing: 0.1em;
+  }
+  .section p {
+    font-size: 13px;
+    line-height: 1.75;
+    color: #444;
+    margin-bottom: 12px;
+  }
+  .callout {
+    background: #f0f4fa;
+    border: 1px solid #d4dff0;
+    border-radius: 6px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #0f2744;
+    line-height: 1.6;
+    font-weight: 500;
+    margin: 16px 0;
+  }
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .info-cell {
+    background: #f8f8f8;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    padding: 12px 14px;
+  }
+  .info-cell label {
+    display: block;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #bbb;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .info-cell span {
+    font-size: 13px;
+    font-weight: 600;
+    color: #222;
+  }
+
+  /* Footer */
+  footer {
+    background: #0f2744;
+    padding: 12px 48px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+  }
+  footer .gold { color: #c8972a; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">InnoBoon Technologies</div>
+  <div class="topbar-ref">{{ reference }} · Confidential</div>
+</div>
+
+<div class="cover">
+  <div class="cover-accent"></div>
+  <h1>{{ proposal_title }}</h1>
+  <p class="cover-sub">Prepared for {{ client_name }}</p>
+  <div class="cover-table">
+    <div class="cover-table-cell">
+      <label>Submitted to</label>
+      <span>{{ client_name }}</span>
+    </div>
+    <div class="cover-table-cell">
+      <label>Submitted by</label>
+      <span>InnoBoon Technologies</span>
+    </div>
+    <div class="cover-table-cell">
+      <label>Submission date</label>
+      <span class="gold">{{ generated_date }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="body">
+  <div class="sidebar">
+    <div class="sidebar-title">Contents</div>
+    <ul class="sidebar-nav">
+      {% for section in sections %}
+      <li{% if loop.first %} class="active"{% endif %}>
+        <span class="num">{{ "%02d"|format(loop.index) }}</span>
+        {{ section.title }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="main">
+
+    {% for section in sections %}
+    <div class="section">
+      <div class="section-header">
+        <h2>{{ section.title }}</h2>
+        <span class="section-num-label">{{ "%02d"|format(loop.index) }}</span>
+      </div>
+      {{ section.content_html | safe }}
+    </div>
+    {% endfor %}
+
+  </div>
+</div>
+
+<footer>
+  <span class="gold">InnoBoon Technologies</span>
+  <span>Commercial in Confidence</span>
+  <span>{{ generated_date }}</span>
+</footer>
+
+</body>
+</html>

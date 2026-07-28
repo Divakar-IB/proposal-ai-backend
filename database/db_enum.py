@@ -18,10 +18,11 @@ class DocumentStatus(str,Enum):
 
 
 class ProposalStatus(str, Enum):
-    DRAFT      = "draft"
+    INPROGRESS = "inprogress"
     GENERATING = "generating"
     REVIEW     = "review"
     APPROVED   = "approved"
+    DONE       = "done"
     FAILED     = "failed"
 
 
@@ -31,6 +32,11 @@ class ProposalSectionStatus(str, Enum):
     DRAFTED        = "drafted"
     NEEDS_REVISION = "needs_revision"
     APPROVED       = "approved"
+
+
+class GenerationMode(str, Enum):
+    LLM_ONLY = "llm_only"
+    KNOWLEDGE_AUGMENTED = "knowledge_augmented"
 
 
 class DocumentAvailability(str, Enum):

@@ -7,6 +7,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from authentication.dependency import get_current_user
 from database.database import get_db
 from database.models import Category, KnowledgeDocument
 from schemas.category import CategoryRequest
@@ -21,7 +22,8 @@ router = APIRouter(
 @router.post("")
 async def create_or_update_category(
     request: CategoryRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     if request.id:
         # Update
@@ -74,7 +76,8 @@ async def create_or_update_category(
 
 @router.get("/list")
 async def get_categories(
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     query_result = await db.execute(
         select(
