@@ -77,3 +77,24 @@ async def send_proposal_export_email(
     except Exception:
         logger.exception("Failed to send proposal export email to %s", to_email)
         raise
+
+
+async def send_team_invite_email(to_email: str, temporary_password: str) -> None:
+    subject = "You're invited to Proposal AI"
+    body = (
+        "Hello,\n\n"
+        "You have been invited to join Proposal AI.\n\n"
+        "Your login credentials are:\n\n"
+        "Email:\n"
+        f"{to_email}\n\n"
+        "Temporary Password:\n"
+        f"{temporary_password}\n\n"
+        "Please log in using these credentials and change your password immediately.\n\n"
+        "Regards,\n"
+        "Proposal AI Team"
+    )
+    try:
+        await send_email(to_email, subject, body)
+    except Exception:
+        logger.exception("Failed to send team invite email to %s", to_email)
+        raise

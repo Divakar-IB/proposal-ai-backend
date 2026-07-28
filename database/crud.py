@@ -56,6 +56,10 @@ async def update_user_password(db: AsyncSession, user: User, hashed_password: st
     return user
 
 
+def build_users_query() -> Select:
+    return select(User).order_by(User.created_at.desc())
+
+
 async def set_user_otp(db: AsyncSession, user: User, hashed_otp: str, expires_at: datetime) -> User:
     user.otp_code = hashed_otp
     user.otp_expires_at = expires_at

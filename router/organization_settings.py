@@ -3,13 +3,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from authentication.dependency import get_current_user
+from authentication.dependency import require_role
 from database.crud import (
     create_organization_settings,
     get_organization_settings,
     update_organization_settings,
 )
 from database.database import get_db
+from database.db_enum import UserRole
 from database.models import OrganizationSettings
 from schemas.organization_settings import (
     OrganizationSettingsResponse,
@@ -45,7 +46,7 @@ def _to_response(settings: Optional[OrganizationSettings]) -> OrganizationSettin
 @router.get("", response_model=OrganizationSettingsResponse)
 async def get_settings(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    _: dict = Depends(require_role(UserRole.ADMIN)),
 ):
     """No record yet? Return an all-empty response rather than a 404 — the
     Settings page always has something to render."""
@@ -58,7 +59,7 @@ async def get_settings(
 async def save_settings(
     request: OrganizationSettingsUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    _: dict = Depends(require_role(UserRole.ADMIN)),
 ):
     """Create-or-update the single settings row. A field omitted from the
     request body leaves its stored value untouched; a field included as
@@ -81,7 +82,7 @@ async def save_settings(
 async def upload_logo(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    _: dict = Depends(require_role(UserRole.ADMIN)),
 ):
     """Dedicated logo upload flow — kept separate from `PUT /organization-
     settings` so uploading/replacing the logo never requires resending the
@@ -94,7 +95,7 @@ async def upload_logo(
 @router.delete("/logo", response_model=OrganizationSettingsResponse)
 async def remove_logo(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    _: dict = Depends(require_role(UserRole.ADMIN)),
 ):
     settings = await organization_settings_service.delete_logo(db)
     return _to_response(settings)
