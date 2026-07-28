@@ -181,3 +181,17 @@ class ProposalSection(BasicModel):
     review_flag: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     proposal: Mapped["Proposal"] = relationship(back_populates="sections")
+
+
+class OrganizationSettings(BasicModel):
+    """Single-row table: the organization's own branding/contact profile,
+    used on generated proposal cover pages. No field is required — a row
+    may exist with every business column null."""
+
+    __tablename__ = "organization_settings"
+
+    organization_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    default_signee_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    default_signee_designation: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    logo_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

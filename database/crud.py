@@ -10,6 +10,7 @@ from database.models import (
     Category,
     KnowledgeChunk,
     KnowledgeDocument,
+    OrganizationSettings,
     Proposal,
     ProposalSection,
     RequirementDocument,
@@ -264,6 +265,33 @@ async def get_proposal_sections_by_ids(db: AsyncSession, section_ids: list[int])
         )
     )
     return list(result.scalars().all())
+
+
+# OrganizationSettings — single-row table, no id-based lookup needed
+async def get_organization_settings(db: AsyncSession) -> OrganizationSettings | None:
+    result = await db.execute(
+        select(OrganizationSettings).filter(OrganizationSettings.is_active.is_(True)).limit(1)
+    )
+    return result.scalars().first()
+
+
+async def create_organization_settings(
+    db: AsyncSession, settings: OrganizationSettings
+) -> OrganizationSettings:
+    db.add(settings)
+    await db.commit()
+    await db.refresh(settings)
+    return settings
+
+
+async def update_organization_settings(
+    db: AsyncSession, settings: OrganizationSettings, **fields: Any
+) -> OrganizationSettings:
+    for key, value in fields.items():
+        setattr(settings, key, value)
+    await db.commit()
+    await db.refresh(settings)
+    return settings
 
 
 async def get_categories_by_names(db: AsyncSession, names: list[str]) -> list[Category]:

@@ -101,6 +101,15 @@ class S3PathBuilder:
             f"proposal.pdf"
         )
 
+    @staticmethod
+    def organization_logo(filename: str) -> str:
+        """Singleton branding asset — no per-user/per-id segment needed,
+        just a fresh uuid per upload so replacing the logo never collides
+        with (or requires deleting before uploading over) the old key."""
+
+        extension = Path(filename).suffix
+        return f"input/organization/logo/{uuid4()}{extension}"
+
 # S3 Service (create,view, update, delete)
 class S3Service:
 
