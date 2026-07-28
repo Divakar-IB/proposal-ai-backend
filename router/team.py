@@ -22,7 +22,7 @@ router = APIRouter(
 def _to_response(user: User) -> TeamMemberResponse:
     return TeamMemberResponse(
         id=user.id,
-        name=None,
+        name=user.full_name,
         email=user.email,
         role=user.role,
         status="active" if user.is_active else "inactive",
