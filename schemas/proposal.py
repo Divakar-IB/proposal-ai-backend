@@ -84,6 +84,12 @@ class ProposalExportRequest(BaseModel):
     format: ExportFormat
 
 
+class ProposalExportEmailRequest(BaseModel):
+    template_id: int
+    format: ExportFormat
+    email: EmailStr
+
+
 class ProposalExportEmailResponse(BaseModel):
     proposal_id: int
     template_id: int

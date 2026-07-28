@@ -18,6 +18,8 @@ from database.db_enum import DocumentStatus, ProposalStatus
 from database.models import Proposal, ProposalSection, RequirementDocument
 from generation.proposal_generator import generate_proposal_stream
 from schemas.proposal import (
+    ProposalExportEmailRequest,
+    ProposalExportEmailResponse,
     ProposalExportRequest,
     ExportTemplateResponse,
     ProposalDetailResponse,
@@ -369,23 +371,42 @@ async def export_proposal(
     """Renders the proposal's current sections (Markdown -> JSON -> HTML via
     the selected template -> PDF/DOCX) straight from the live section rows —
     not yet gated on approval, since that review/approve flow isn't wired up
-    end-to-end yet. Always returns the rendered file as a raw binary
-    response (forced download); if `email` is also set, the same rendered
-    file is additionally emailed as a side effect (rendered once, used for
-    both)."""
+    end-to-end yet. Always returns the rendered file as a raw binary response
+    (forced download). Emailing the export is a separate endpoint — see
+    POST /{proposal_id}/export/email."""
 
     proposal, content, filename, content_type = await proposal_export_service.render_proposal_document(
         db, proposal_id, request.template_id, request.format
     )
 
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-
-    # if request.email:
-    #     await proposal_export_service.email_rendered_proposal(
-    #         request.email, proposal, content, filename, content_type
-    #     )
-    #     headers["X-Email-Sent-To"] = request.email
-
     return Response(content=content, media_type=content_type, headers=headers)
+
+
+@router.post("/{proposal_id}/export/email", response_model=ProposalExportEmailResponse)
+async def email_proposal_export(
+    proposal_id: int,
+    request: ProposalExportEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Renders the same way as POST /{proposal_id}/export, but instead of
+    returning the file, emails it to the given address and confirms what was
+    sent where — no binary is returned to the caller."""
+
+    proposal, content, filename, content_type = await proposal_export_service.render_proposal_document(
+        db, proposal_id, request.template_id, request.format
+    )
+
+    await proposal_export_service.email_rendered_proposal(
+        request.email, proposal, content, filename, content_type
+    )
+
+    return ProposalExportEmailResponse(
+        proposal_id=proposal.id,
+        template_id=request.template_id,
+        format=request.format,
+        sent_to=request.email,
+    )
 
 
