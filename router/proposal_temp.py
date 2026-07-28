@@ -126,7 +126,7 @@ def _proposal_detail_response(proposal: Proposal) -> ProposalDetailResponse:
 def _wizard_generation_status(proposal_status: ProposalStatus) -> str:
     """Collapses the full proposal lifecycle down to what the generation
     wizard step cares about: still running, errored, or finished (review/
-    approved/done all read as "done" here — approval/export are separate
+    done both read as "done" here — status tracking/export are separate
     steps outside this demo flow)."""
 
     if proposal_status == ProposalStatus.GENERATING:

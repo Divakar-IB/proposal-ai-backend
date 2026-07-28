@@ -21,7 +21,6 @@ class ProposalStatus(str, Enum):
     INPROGRESS = "inprogress"
     GENERATING = "generating"
     REVIEW     = "review"
-    APPROVED   = "approved"
     DONE       = "done"
     FAILED     = "failed"
 

@@ -341,21 +341,21 @@ async def approve_proposal_section(
 
 
 # ------------------------------------------------------------------
-# Whole-proposal approval + export
+# Proposal status tracking + export
 # ------------------------------------------------------------------
 
-@router.post("/{proposal_id}/approve", response_model=ProposalResponse)
-async def approve_proposal(
+@router.patch("/{proposal_id}/status", response_model=ProposalResponse)
+async def set_proposal_status(
     proposal_id: int,
+    status: ProposalStatus,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Signs off on the whole proposal — requires every section to already
-    be drafted and clear of any review flag, then force-approves any
-    remaining drafted-but-not-yet-approved sections. This is the gate before
-    export."""
+    """Manually moves the proposal-tracking status forward — mainly used to
+    mark a proposal DONE once review is finished. Cannot move status
+    backward (e.g. generating -> inprogress)."""
 
-    proposal = await proposal_review_service.approve_proposal(db, proposal_id)
+    proposal = await proposal_review_service.set_proposal_status(db, proposal_id, status)
     return _proposal_response(proposal)
 
 
