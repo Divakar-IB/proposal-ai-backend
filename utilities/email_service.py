@@ -1,5 +1,7 @@
 import asyncio
 import smtplib
+import socket
+import time
 from email.message import EmailMessage
 from typing import NamedTuple, Optional
 
@@ -15,6 +17,8 @@ class EmailAttachment(NamedTuple):
     content_type: str
 
 
+# TEMPORARY: stage-by-stage timing instrumentation to diagnose why sending is
+# slow on Render but not locally. Remove once the bottleneck is confirmed.
 def _send_email_sync(
     to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
 ) -> None:
@@ -33,17 +37,52 @@ def _send_email_sync(
             filename=attachment.filename,
         )
 
-    with smtplib.SMTP(config.smtp.host, config.smtp.port) as server:
+    timings: dict[str, float] = {}
+    overall_start = time.perf_counter()
+
+    stage_start = time.perf_counter()
+    socket.getaddrinfo(config.smtp.host, config.smtp.port)
+    timings["dns_resolve"] = time.perf_counter() - stage_start
+
+    stage_start = time.perf_counter()
+    server = smtplib.SMTP(config.smtp.host, config.smtp.port, timeout=20)
+    timings["tcp_connect"] = time.perf_counter() - stage_start
+
+    try:
         if config.smtp.use_tls:
+            stage_start = time.perf_counter()
             server.starttls()
+            timings["starttls"] = time.perf_counter() - stage_start
+
+        stage_start = time.perf_counter()
         server.login(config.smtp.username, config.smtp.password)
+        timings["login"] = time.perf_counter() - stage_start
+
+        stage_start = time.perf_counter()
         server.send_message(message)
+        timings["send_message"] = time.perf_counter() - stage_start
+    finally:
+        stage_start = time.perf_counter()
+        server.quit()
+        timings["quit"] = time.perf_counter() - stage_start
+
+    timings["total"] = time.perf_counter() - overall_start
+    logger.info(
+        "SMTP send timing to=%s | %s",
+        to_email,
+        " ".join(f"{stage}={duration:.3f}s" for stage, duration in timings.items()),
+    )
 
 
 async def send_email(
     to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
 ) -> None:
+    dispatch_start = time.perf_counter()
     await asyncio.to_thread(_send_email_sync, to_email, subject, body, attachments)
+    logger.info(
+        "send_email total (including thread dispatch) to=%s | %.3fs",
+        to_email, time.perf_counter() - dispatch_start,
+    )
 
 
 async def send_otp_email(to_email: str, otp: str, expires_in_minutes: int) -> None:
