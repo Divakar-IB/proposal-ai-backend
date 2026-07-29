@@ -11,6 +11,7 @@ from constants import EXPORT_TEMPLATES
 from database.crud import (
     create_proposal,
     create_requirement_document,
+    delete_proposal,
     get_proposal_by_id,
 )
 from database.database import get_db
@@ -283,6 +284,23 @@ async def list_proposals(
     )
     result["data"] = [_proposal_response(proposal) for proposal in result["data"]]
     return result
+
+
+@router.delete("/{proposal_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_proposal_endpoint(
+    proposal_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Soft-deletes the proposal (is_active=False), the same pattern already
+    used for Proposal elsewhere in this module (get_proposal_by_id and
+    build_proposals_query both filter on is_active) — so it drops out of
+    GET /proposals immediately. Sections and requirement documents are left
+    as-is, matching how deleting a knowledge document doesn't cascade to its
+    chunks either."""
+
+    proposal = await _get_proposal_or_404(db, proposal_id)
+    await delete_proposal(db, proposal)
 
 
 # @router.get("/{proposal_id}", response_model=ProposalDetailResponse)
