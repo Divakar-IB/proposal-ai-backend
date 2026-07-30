@@ -65,7 +65,7 @@ def _to_response(document: KnowledgeDocument) -> DocumentResponse:
 async def upload_document(
     background_tasks: BackgroundTasks,
     # response: Response,
-    document_id: Optional[int] = None,
+    document_id: Optional[int] = Form(None),
     document_name: str = Form(...),
     description: str = Form(...),
     category_id: int = Form(...),
