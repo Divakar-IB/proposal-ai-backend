@@ -10,6 +10,8 @@ from schemas.team import (
     InviteTeamMemberResponse,
     TeamMemberListResponse,
     TeamMemberResponse,
+    UpdateTeamMemberRoleRequest,
+    UpdateTeamMemberRoleResponse,
 )
 from services import team_service
 
@@ -62,3 +64,36 @@ async def list_team_members(
 
     result["data"] = [_to_response(user) for user in result["data"]]
     return result
+
+
+@router.patch("/members/{user_id}/role", response_model=UpdateTeamMemberRoleResponse)
+async def update_team_member_role(
+    user_id: int,
+    request: UpdateTeamMemberRoleRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role(UserRole.ADMIN)),
+):
+    user = await team_service.update_team_member_role(
+        db,
+        user_id=user_id,
+        new_role=request.role,
+        current_user_id=current_user.get("user_id"),
+    )
+    return UpdateTeamMemberRoleResponse(
+        message="Role updated successfully.",
+        id=user.id,
+        email=user.email,
+        role=user.role,
+    )
+
+
+@router.delete("/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_team_member(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role(UserRole.ADMIN)),
+):
+    """Soft-deletes the user (is_active=False), the same pattern used for
+    Proposal deletion (see database.crud.delete_proposal / delete_user)."""
+
+    await team_service.delete_team_member(db, user_id=user_id, current_user_id=current_user.get("user_id"))
