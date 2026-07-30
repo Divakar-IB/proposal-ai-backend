@@ -11,6 +11,7 @@ from constants import EXPORT_TEMPLATES
 from database.crud import (
     create_proposal,
     create_requirement_document,
+    delete_proposal,
     get_proposal_by_id,
 )
 from database.database import get_db
@@ -285,6 +286,23 @@ async def list_proposals(
     return result
 
 
+@router.delete("/{proposal_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_proposal_endpoint(
+    proposal_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Soft-deletes the proposal (is_active=False), the same pattern already
+    used for Proposal elsewhere in this module (get_proposal_by_id and
+    build_proposals_query both filter on is_active) — so it drops out of
+    GET /proposals immediately. Sections and requirement documents are left
+    as-is, matching how deleting a knowledge document doesn't cascade to its
+    chunks either."""
+
+    proposal = await _get_proposal_or_404(db, proposal_id)
+    await delete_proposal(db, proposal)
+
+
 # @router.get("/{proposal_id}", response_model=ProposalDetailResponse)
 # async def get_proposal(
 #     proposal_id: int,
@@ -343,21 +361,21 @@ async def approve_proposal_section(
 
 
 # ------------------------------------------------------------------
-# Whole-proposal approval + export
+# Proposal status tracking + export
 # ------------------------------------------------------------------
 
-@router.post("/{proposal_id}/approve", response_model=ProposalResponse)
-async def approve_proposal(
+@router.patch("/{proposal_id}/status", response_model=ProposalResponse)
+async def set_proposal_status(
     proposal_id: int,
+    status: ProposalStatus,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Signs off on the whole proposal — requires every section to already
-    be drafted and clear of any review flag, then force-approves any
-    remaining drafted-but-not-yet-approved sections. This is the gate before
-    export."""
+    """Manually moves the proposal-tracking status forward — mainly used to
+    mark a proposal DONE once review is finished. Cannot move status
+    backward (e.g. generating -> inprogress)."""
 
-    proposal = await proposal_review_service.approve_proposal(db, proposal_id)
+    proposal = await proposal_review_service.set_proposal_status(db, proposal_id, status)
     return _proposal_response(proposal)
 
 

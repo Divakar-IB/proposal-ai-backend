@@ -243,6 +243,11 @@ async def update_proposal(db: AsyncSession, proposal: Proposal, **fields) -> Pro
     return proposal
 
 
+async def delete_proposal(db: AsyncSession, proposal: Proposal) -> None:
+    proposal.is_active = False
+    await db.commit()
+
+
 async def create_proposal_sections(
     db: AsyncSession, sections: list[ProposalSection]
 ) -> list[ProposalSection]:
