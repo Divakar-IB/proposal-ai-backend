@@ -64,6 +64,11 @@ async def update_user(db: AsyncSession, user: User, **fields: Any) -> User:
     return user
 
 
+async def delete_user(db: AsyncSession, user: User) -> None:
+    user.is_active = False
+    await db.commit()
+
+
 def build_users_query() -> Select:
     return select(User).order_by(User.created_at.desc())
 

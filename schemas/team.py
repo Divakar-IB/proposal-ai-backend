@@ -35,3 +35,14 @@ class TeamMemberListResponse(BaseModel):
     total_pages: int
     total: int
     data: list[TeamMemberResponse]
+
+
+class UpdateTeamMemberRoleRequest(BaseModel):
+    role: UserRole
+
+
+class UpdateTeamMemberRoleResponse(BaseModel):
+    message: str
+    id: int
+    email: EmailStr
+    role: UserRole

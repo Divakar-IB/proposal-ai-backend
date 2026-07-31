@@ -1,8 +1,10 @@
 from fastapi import HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from authentication.dependency import hash_password
-from database.crud import build_users_query, create_user, get_user_by_email
+from database.crud import build_users_query, create_user, delete_user, get_user_by_email, get_user_by_id, update_user
+from database.db_enum import UserRole
 from database.models import User
 from schemas.team import InviteTeamMemberRequest
 from utilities.email_service import send_team_invite_email
@@ -55,3 +57,54 @@ async def invite_team_member(db: AsyncSession, request: InviteTeamMemberRequest)
 async def list_team_members(db: AsyncSession, *, page: int = 1, limit: int = 10) -> dict:
     query = build_users_query()
     return await paginate(db, query, page=page, limit=limit)
+
+
+async def update_team_member_role(db: AsyncSession, *, user_id: int, new_role: UserRole, current_user_id: int) -> User:
+    user = await get_user_by_id(db, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found")
+
+    if user.id == current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot change your own role",
+        )
+
+    if user.role == UserRole.ADMIN and new_role != UserRole.ADMIN:
+        admin_count = await db.scalar(
+            select(func.count()).select_from(User).filter(User.role == UserRole.ADMIN, User.is_active.is_(True))
+        )
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove the last admin",
+            )
+
+    user = await update_user(db, user, role=new_role)
+    logger.info("team member role updated | user_id=%s email=%s role=%s", user.id, user.email, user.role)
+    return user
+
+
+async def delete_team_member(db: AsyncSession, *, user_id: int, current_user_id: int) -> None:
+    user = await get_user_by_id(db, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found")
+
+    if user.id == current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account",
+        )
+
+    if user.role == UserRole.ADMIN:
+        admin_count = await db.scalar(
+            select(func.count()).select_from(User).filter(User.role == UserRole.ADMIN, User.is_active.is_(True))
+        )
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove the last admin",
+            )
+
+    await delete_user(db, user)
+    logger.info("team member deleted | user_id=%s email=%s", user.id, user.email)
