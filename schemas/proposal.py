@@ -74,6 +74,15 @@ class ProposalListResponse(BaseModel):
     data: list[ProposalResponse]
 
 
+class ProposalStatsResponse(BaseModel):
+    total: int
+    inprogress: int
+    generating: int
+    review: int
+    done: int
+    failed: int
+
+
 class ExportFormat(str, Enum):
     PDF = "pdf"
     DOCX = "docx"

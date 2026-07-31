@@ -30,6 +30,7 @@ from schemas.proposal import (
     ProposalResponse,
     ProposalSectionMinimal,
     ProposalSectionResponse,
+    ProposalStatsResponse,
     SectionsBulkEditRequest,
 )
 from schemas.requirement_document import RequirementDocumentResponse
@@ -252,6 +253,20 @@ async def list_export_templates(current_user: dict = Depends(get_current_user)):
         )
         for template in EXPORT_TEMPLATES
     ]
+
+
+@router.get("/stats", response_model=ProposalStatsResponse)
+async def get_proposal_stats(
+    created_by: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Dashboard counts for the proposals list — total active proposals plus
+    a per-status breakdown (inprogress/generating/review/done/failed).
+    Declared before /{proposal_id} so "stats" isn't swallowed as a proposal
+    id, same reasoning as GET /templates above."""
+
+    return await proposal_review_service.get_proposal_stats(db, created_by=created_by)
 
 
 @router.get("", response_model=ProposalListResponse)
