@@ -6,10 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from authentication.dependency import hash_password, verify_password
 from authentication.jwt_handler import (
     create_access_token,
+    create_password_reset_token,
     create_refresh_token,
+    verify_password_reset_token,
     verify_refresh_token,
 )
 from database.crud import (
+    clear_user_otp,
     create_user,
     get_user_by_email,
     get_user_by_id,
@@ -20,6 +23,8 @@ from database.models import User
 from schemas.auth import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
+    NewPasswordRequest,
+    NewPasswordResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
     CreateUserRequest,
@@ -32,6 +37,8 @@ from schemas.auth import (
     RefreshResponse,
     RegisterRequest,
     RegisterResponse,
+    VerifyOtpRequest,
+    VerifyOtpResponse,
 )
 from utilities.email_service import send_otp_email
 from utilities.generic import assign_role, generate_otp
@@ -148,6 +155,59 @@ async def forgot_password(
         await send_otp_email(user.email, otp, OTP_EXPIRE_MINUTES)
 
     return ForgotPasswordResponse(message=GENERIC_FORGOT_PASSWORD_MESSAGE)
+
+
+def _check_otp(user: User | None, otp: str) -> None:
+    invalid_otp_error = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired OTP",
+    )
+
+    if user is None or not user.is_active or user.otp_code is None or user.otp_expires_at is None:
+        raise invalid_otp_error
+
+    if datetime.now(timezone.utc).replace(tzinfo=None) > user.otp_expires_at:
+        raise invalid_otp_error
+
+    if not verify_password(otp, user.otp_code):
+        raise invalid_otp_error
+
+
+async def verify_otp(
+    db: AsyncSession,
+    request: VerifyOtpRequest,
+) -> VerifyOtpResponse:
+    user = await get_user_by_email(db, request.email)
+    _check_otp(user, request.otp)
+
+    # OTP is single-use: consume it now and hand back a short-lived reset
+    # token so the follow-up /new_password call doesn't need the OTP again.
+    await clear_user_otp(db, user)
+    reset_token = create_password_reset_token(user.id, OTP_EXPIRE_MINUTES)
+
+    return VerifyOtpResponse(message="OTP verified successfully.", reset_token=reset_token)
+
+
+async def set_new_password(
+    db: AsyncSession,
+    request: NewPasswordRequest,
+) -> NewPasswordResponse:
+    payload = verify_password_reset_token(request.reset_token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired reset token",
+        )
+
+    user = await get_user_by_id(db, payload.get("user_id"))
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    await update_user_password(db, user, hash_password(request.new_password))
+    return NewPasswordResponse(message="Password reset successfully.")
 
 
 async def create_user_by_admin(

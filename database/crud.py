@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
@@ -76,6 +76,14 @@ def build_users_query() -> Select:
 async def set_user_otp(db: AsyncSession, user: User, hashed_otp: str, expires_at: datetime) -> User:
     user.otp_code = hashed_otp
     user.otp_expires_at = expires_at
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def clear_user_otp(db: AsyncSession, user: User) -> User:
+    user.otp_code = None
+    user.otp_expires_at = None
     await db.commit()
     await db.refresh(user)
     return user
@@ -230,6 +238,20 @@ def build_proposals_query(
     if created_to is not None:
         query = query.filter(Proposal.created_at <= created_to)
     return query.order_by(Proposal.created_at.desc())
+
+
+async def get_proposal_status_counts(
+    db: AsyncSession, *, created_by: Optional[int] = None
+) -> dict[ProposalStatus, int]:
+    query = (
+        select(Proposal.status, func.count(Proposal.id))
+        .filter(Proposal.is_active.is_(True))
+        .group_by(Proposal.status)
+    )
+    if created_by is not None:
+        query = query.filter(Proposal.user_id == created_by)
+    result = await db.execute(query)
+    return dict(result.all())
 
 
 async def update_proposal(db: AsyncSession, proposal: Proposal, **fields) -> Proposal:

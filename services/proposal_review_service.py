@@ -10,6 +10,7 @@ from database.crud import (
     get_proposal_by_id,
     get_proposal_section_by_id,
     get_proposal_sections_by_ids,
+    get_proposal_status_counts,
     get_requirement_documents_by_proposal_id,
     has_any_knowledge_chunks,
     update_proposal,
@@ -223,3 +224,14 @@ async def list_proposals(
         created_to=created_to,
     )
     return await paginate(db, query, page=page, limit=limit)
+
+
+async def get_proposal_stats(db: AsyncSession, *, created_by: Optional[int] = None) -> dict:
+    """Dashboard counts: total active proposals plus one flat field per
+    status. Statuses with no proposals still come back as 0 rather than
+    being omitted, so callers don't need to guard against missing keys."""
+
+    counts = await get_proposal_status_counts(db, created_by=created_by)
+    stats = {proposal_status.value: counts.get(proposal_status, 0) for proposal_status in ProposalStatus}
+    stats["total"] = sum(stats.values())
+    return stats

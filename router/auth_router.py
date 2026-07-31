@@ -8,6 +8,8 @@ from authentication.auth_service import (
     refresh,
     register,
     reset_password,
+    set_new_password,
+    verify_otp,
 )
 from authentication.dependency import get_current_user
 from database.database import get_db
@@ -15,6 +17,8 @@ from database.db_enum import UserRole
 from schemas.auth import (
     ForgotPasswordRequest,
     ForgotPasswordResponse,
+    NewPasswordRequest,
+    NewPasswordResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
     CreateUserRequest,
@@ -27,6 +31,8 @@ from schemas.auth import (
     RefreshResponse,
     RegisterRequest,
     RegisterResponse,
+    VerifyOtpRequest,
+    VerifyOtpResponse,
 )
 from authentication.dependency import require_role
 
@@ -74,6 +80,22 @@ async def forgot_password_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     return await forgot_password(db=db, request=forgot_password_request)
+
+
+@router.post("/verify_otp", response_model=VerifyOtpResponse)
+async def verify_otp_endpoint(
+    verify_otp_request: VerifyOtpRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    return await verify_otp(db=db, request=verify_otp_request)
+
+
+@router.post("/new_password", response_model=NewPasswordResponse)
+async def new_password_endpoint(
+    new_password_request: NewPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    return await set_new_password(db=db, request=new_password_request)
 
 
 @router.post("/reset_password", response_model=ResetPasswordResponse)

@@ -117,6 +117,51 @@ class ForgotPasswordResponse(BaseModel):
     )
 
 
+# Verify OTP
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    otp: str
+
+
+class VerifyOtpResponse(BaseModel):
+    message: str
+    reset_token: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "message": "OTP verified successfully.",
+                "reset_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            }
+        }
+    )
+
+
+# New Password (via reset_token issued by /verify_otp, for forgot-password flow)
+class NewPasswordRequest(BaseModel):
+    reset_token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
+
+
+class NewPasswordResponse(BaseModel):
+    message: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "message": "Password reset successfully."
+            }
+        }
+    )
+
+
 # Create User (Admin only)
 class CreateUserRequest(BaseModel):
     email: EmailStr
