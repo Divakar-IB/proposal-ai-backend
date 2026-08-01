@@ -20,6 +20,7 @@ from authentication.dependency import get_current_user
 from database.crud import (
     build_knowledge_documents_query,
     create_knowledge_document,
+    delete_knowledge_chunks_for_document,
     delete_knowledge_document,
     get_knowledge_document_by_id,
     update_knowledge_document,
@@ -32,6 +33,7 @@ from tasks.document_processing import process_knowledge_document
 from utilities.pagination import paginate
 from utilities.logger import get_logger
 from utilities.s3_service import S3PathBuilder, S3Service
+from vectorstore.knowledge_store import delete_document_vectors
 
 logger = get_logger(__name__)
 s3_service = S3Service()
@@ -189,35 +191,27 @@ async def upload_document(
     return _to_response(document)
 
 
-@router.post("/{document_id}/process", response_model=DocumentResponse)
-async def process_document(
-    document_id: int,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    document = await get_knowledge_document_by_id(db, document_id)
-    if document is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-
-    background_tasks.add_task(process_knowledge_document, document_id)
-
-    document = await update_knowledge_document(db, document, status=IngestionStatus.PENDING)
-    return _to_response(document)
-
-
 @router.get("/list", response_model=DocumentListResponse)
 async def list_documents(
     category_id: Optional[int] = None,
     search: Optional[str] = None,
     status: Optional[DocumentAvailability] = None,
+    include_generated: bool = False,
     page: int = 1,
     limit: int = 10,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    """`include_generated=True` also surfaces knowledge documents that were
+    auto-ingested from an approved proposal (see PATCH
+    /proposals/{id}/status) — hidden by default so the manual-upload list
+    doesn't get mixed in with those."""
+
     query = build_knowledge_documents_query(
-        category_id=category_id, search=search, knowledge_status=status
+        category_id=category_id,
+        search=search,
+        knowledge_status=status,
+        include_generated=include_generated,
     )
     return await paginate(db, query, page=page, limit=limit, serializer=_to_response)
 
@@ -286,5 +280,12 @@ async def delete_document(
     # If this raises an exception, your middleware will return a 500 response.
     s3_service.delete_file(document.file_path)
 
-    # Only executed if S3 deletion succeeded.
+    # Clean up the indexed side (Pinecone vectors + Postgres chunk rows) before
+    # the soft-delete — otherwise they'd stay live forever and, for a
+    # proposal-derived document, a later re-ingestion would violate the
+    # source_proposal_id uniqueness the upsert relies on.
+    delete_document_vectors(document_id)
+    await delete_knowledge_chunks_for_document(db, document_id)
+
+    # Only executed if the above succeeded.
     await delete_knowledge_document(db, document)

@@ -114,9 +114,10 @@ async def generate_proposal_stream(
                 ),
                 "retrieved_chunks": [],
             }
-            section_state["retrieved_chunks"] = await retrieve_chunks_for_section(
-                section_state, requirements, category_ids, has_knowledge,
-            )
+            async with db_session() as db:
+                section_state["retrieved_chunks"] = await retrieve_chunks_for_section(
+                    db, section_state, requirements, category_ids, has_knowledge,
+                )
 
             content_parts: list[str] = []
             for delta in draft_one_section_stream(section_state, requirements_json):

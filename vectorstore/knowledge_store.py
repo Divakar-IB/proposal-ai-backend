@@ -17,13 +17,36 @@ def upsert_chunks(
     source_filename: str,
     chunks: list[Chunk],
     embeddings: list[list[float]],
+    source_type: Optional[str] = None,
+    source_proposal_id: Optional[int] = None,
+    organization_name: Optional[str] = None,
+    embedding_version: Optional[str] = None,
 ) -> list[str]:
     """Upserts embedded chunks into Pinecone with structured metadata.
     Returns the Pinecone vector IDs in the same order as `chunks`, so the
-    caller can persist them onto the corresponding KnowledgeChunk rows."""
+    caller can persist them onto the corresponding KnowledgeChunk rows.
+
+    `source_type`/`source_proposal_id`/`organization_name`/`embedding_version`
+    are additive, optional metadata (omitted entirely when not passed) used
+    to attribute chunks originating from an approved proposal rather than a
+    manually uploaded document — see services.citation_service. They are
+    not used to filter retrieval; query_chunks callers that need to exclude
+    proposal-derived content do so by resolving each hit's source document
+    in Postgres instead (see generation/nodes.py, tasks/requirement_processing.py)."""
 
     index = PineconeService.get_index()
     vector_ids = [build_vector_id(document_id, chunk.chunk_index) for chunk in chunks]
+
+    extra_metadata = {
+        key: value
+        for key, value in {
+            "source_type": source_type,
+            "source_proposal_id": source_proposal_id,
+            "organization_name": organization_name,
+            "embedding_version": embedding_version,
+        }.items()
+        if value is not None
+    }
 
     vectors = [
         {
@@ -37,6 +60,7 @@ def upsert_chunks(
                 "chunk_index": chunk.chunk_index,
                 "source_filename": source_filename,
                 "text": chunk.content,
+                **extra_metadata,
             },
         }
         for vector_id, chunk, embedding in zip(vector_ids, chunks, embeddings)

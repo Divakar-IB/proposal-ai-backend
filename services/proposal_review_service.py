@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.crud import (
     build_proposals_query,
+    delete_proposal as delete_proposal_row,
     get_proposal_by_id,
     get_proposal_section_by_id,
     get_proposal_sections_by_ids,
@@ -135,7 +136,7 @@ async def regenerate_section(db: AsyncSession, section_id: int) -> ProposalSecti
     }
 
     section_state["retrieved_chunks"] = await retrieve_chunks_for_section(
-        section_state, requirements, proposal.category_ids, has_knowledge,
+        db, section_state, requirements, proposal.category_ids, has_knowledge,
     )
 
     content, citations = draft_one_section(section_state, requirements_json)
@@ -196,6 +197,25 @@ async def set_proposal_status(db: AsyncSession, proposal_id: int, new_status: Pr
         proposal_id, proposal.status.value, new_status.value,
     )
     return await update_proposal(db, proposal, status=new_status)
+
+
+async def delete_proposal(db: AsyncSession, proposal_id: int) -> None:
+    proposal = await get_proposal_by_id(db, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+
+    await delete_proposal_row(db, proposal)
+    logger.info("proposal deleted | proposal_id=%s", proposal_id)
+
+
+async def get_proposal_stats(db: AsyncSession) -> dict:
+    """Overall proposal count plus a per-status breakdown for the dashboard —
+    every ProposalStatus value is always present (0 if there are none yet),
+    so the frontend doesn't need to fill in gaps itself."""
+
+    counts = await get_proposal_status_counts(db)
+    by_status = {proposal_status: counts.get(proposal_status, 0) for proposal_status in ProposalStatus}
+    return {"total": sum(by_status.values()), "by_status": by_status}
 
 
 async def list_proposals(

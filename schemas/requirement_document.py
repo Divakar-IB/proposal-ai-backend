@@ -33,6 +33,7 @@ class RequirementDocumentResponse(BaseModel):
     knowledge_matches: list[KnowledgeMatch] = []
     capability_tags: list[CapabilityTagOut] = []
     created_at: datetime
+    additional_documents: list["RequirementDocumentResponse"] = []
 
     class Config:
         from_attributes = True

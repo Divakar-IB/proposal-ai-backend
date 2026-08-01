@@ -1,8 +1,18 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,12 +22,16 @@ from database.crud import (
     create_proposal,
     create_requirement_document,
     delete_proposal,
+    get_organization_settings,
     get_proposal_by_id,
+    update_proposal,
 )
 from database.database import get_db
 from database.db_enum import DocumentStatus, ProposalStatus
 from database.models import Proposal, ProposalSection, RequirementDocument
 from generation.proposal_generator import generate_proposal_stream
+from services.proposal_knowledge_service import ingest_proposal_as_knowledge
+from services.proposal_naming_service import generate_proposal_name
 from schemas.proposal import (
     ProposalExportEmailRequest,
     ProposalExportEmailResponse,
@@ -53,7 +67,9 @@ router = APIRouter(
 # ------------------------------------------------------------------
 
 def _requirement_document_response(
-    document: RequirementDocument, proposal: Proposal
+    document: RequirementDocument,
+    proposal: Proposal,
+    additional_documents: Optional[list[RequirementDocument]] = None,
 ) -> RequirementDocumentResponse:
     return RequirementDocumentResponse(
         id=document.id,
@@ -69,6 +85,10 @@ def _requirement_document_response(
         knowledge_matches=document.knowledge_matches or [],
         capability_tags=document.capability_tags or [],
         created_at=document.created_at,
+        additional_documents=[
+            _requirement_document_response(extra, proposal)
+            for extra in (additional_documents or [])
+        ],
     )
 
 
@@ -145,62 +165,113 @@ async def _get_proposal_or_404(db: AsyncSession, proposal_id: int) -> Proposal:
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_requirement_document(
-    file: UploadFile = File(...),
-    proposal_name: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None),
+    proposal_id: Optional[int] = Form(None),
+    proposal_name: Optional[str] = Form(None),
     client_name: str = Form(...),
     additional_context: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Uploads to S3, then fetches it back from S3 and runs the pipeline
-    (extract -> summary -> knowledge-base match scoring) synchronously, so
-    the caller gets the summary and matches back here directly instead of
-    polling a separate status endpoint. Also creates the Proposal row up
-    front (title/client_name/additional_context), which the later
-    /generate call will draft into. Must succeed even when there are no
-    knowledge documents in the system yet."""
+    """Uploads one or more requirement documents, then fetches each back from
+    S3 and runs the pipeline (extract -> summary -> knowledge-base match
+    scoring) synchronously per file, in upload order, so the caller gets the
+    summary/matches back here directly instead of polling a separate status
+    endpoint. Files are processed one at a time (not concurrently) — the
+    pipeline shares one request-scoped DB session, which isn't safe for
+    concurrent use, and the LLM calls inside it are blocking anyway so
+    concurrency would buy nothing.
+
+    `file` (singular) is the original field — still accepted as-is for
+    existing callers. `files` (plural) additionally accepts more than one
+    upload in the same call; both can be combined. Pass `proposal_id` to
+    attach new documents to an already-created proposal instead of starting
+    a new one (proposal_name/client_name/additional_context are then only
+    used as extraction context for the new files, not applied to the
+    existing proposal). Omitting `proposal_name` on a new proposal defers
+    naming until the first file's requirements are parsed — see
+    services.proposal_naming_service."""
 
     user_id = current_user["user_id"]
-    extension = Path(file.filename or "").suffix.lstrip(".").lower()
 
-    s3_key = S3PathBuilder.requirement_document(user_id=user_id, filename=file.filename)
-    try:
-        s3_service.upload_file(file, s3_key)
-    except Exception:
-        logger.exception("upload to S3 failed | user_id=%s filename=%s", user_id, file.filename)
+    uploads: list[UploadFile] = list(files) if files else []
+    if file is not None:
+        uploads.insert(0, file)
+    if not uploads:
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to upload file to storage. Please try again.",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="At least one file is required (file or files).",
         )
 
-    proposal = Proposal(
-        user_id=user_id,
-        title=proposal_name,
-        client_name=client_name,
-        additional_context=additional_context,
-        status=ProposalStatus.INPROGRESS,
-    )
-    proposal = await create_proposal(db, proposal)
-    logger.info("proposal created | proposal_id=%s", proposal.id)
+    if proposal_id is not None:
+        proposal = await _get_proposal_or_404(db, proposal_id)
+    else:
+        proposal = Proposal(
+            user_id=user_id,
+            title=proposal_name or client_name,
+            client_name=client_name,
+            additional_context=additional_context,
+            status=ProposalStatus.INPROGRESS,
+        )
+        proposal = await create_proposal(db, proposal)
+        logger.info("proposal created | proposal_id=%s", proposal.id)
 
-    document = RequirementDocument(
-        file_name=file.filename,
-        file_path=s3_key,
-        extension=extension,
-        user_id=user_id,
-        proposal_id=proposal.id,
-    )
-    document = await create_requirement_document(db, document)
-    logger.info("requirement document created | document_id=%s proposal_id=%s", document.id, proposal.id)
+    documents: list[RequirementDocument] = []
+    for upload in uploads:
+        extension = Path(upload.filename or "").suffix.lstrip(".").lower()
 
-    document = await process_requirement_document_pipeline(db, document, additional_context=additional_context)
-    if document.status == DocumentStatus.FAILED:
+        s3_key = S3PathBuilder.requirement_document(user_id=user_id, filename=upload.filename)
+        try:
+            s3_service.upload_file(upload, s3_key)
+        except Exception:
+            logger.exception("upload to S3 failed | user_id=%s filename=%s", user_id, upload.filename)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to upload file to storage. Please try again.",
+            )
+
+        document = RequirementDocument(
+            file_name=upload.filename,
+            file_path=s3_key,
+            extension=extension,
+            user_id=user_id,
+            proposal_id=proposal.id,
+        )
+        document = await create_requirement_document(db, document)
+        logger.info(
+            "requirement document created | document_id=%s proposal_id=%s", document.id, proposal.id
+        )
+
+        document = await process_requirement_document_pipeline(
+            db, document, additional_context=additional_context
+        )
+        documents.append(document)
+
+    primary_document = documents[0]
+    if primary_document.status == DocumentStatus.FAILED:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Failed to process requirement document — see server logs for details.",
         )
 
-    return _requirement_document_response(document, proposal)
+    # Auto-name a brand-new proposal from the first successfully-parsed
+    # document's project_title, unless the caller already gave it an
+    # explicit name.
+    if proposal_id is None and proposal_name is None and primary_document.parsed_data:
+        project_title = primary_document.parsed_data.get("project_title")
+        if project_title:
+            org_settings = await get_organization_settings(db)
+            generated_name = generate_proposal_name(
+                client_name=client_name,
+                project_title=project_title,
+                organization_name=org_settings.organization_name if org_settings else None,
+                template=org_settings.proposal_naming_template if org_settings else None,
+            )
+            proposal = await update_proposal(db, proposal, title=generated_name)
+            logger.info("proposal auto-named | proposal_id=%s title=%s", proposal.id, generated_name)
+
+    return _requirement_document_response(primary_document, proposal, documents[1:])
 
 
 # ------------------------------------------------------------------
@@ -257,16 +328,14 @@ async def list_export_templates(current_user: dict = Depends(get_current_user)):
 
 @router.get("/stats", response_model=ProposalStatsResponse)
 async def get_proposal_stats(
-    created_by: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Dashboard counts for the proposals list — total active proposals plus
-    a per-status breakdown (inprogress/generating/review/done/failed).
-    Declared before /{proposal_id} so "stats" isn't swallowed as a proposal
-    id, same reasoning as GET /templates above."""
+    """Overall proposal count plus a per-status breakdown, for dashboard
+    tiles. Declared before /{proposal_id}/... paths so "stats" isn't
+    swallowed by a dynamic path."""
 
-    return await proposal_review_service.get_proposal_stats(db, created_by=created_by)
+    return await proposal_review_service.get_proposal_stats(db)
 
 
 @router.get("", response_model=ProposalListResponse)
@@ -351,30 +420,6 @@ async def edit_proposal_sections(
     return [_proposal_section_response(section) for section in sections]
 
 
-@router.post("/sections/{section_id}/regenerate", response_model=ProposalSectionResponse)
-async def regenerate_proposal_section(
-    section_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """One fresh draft + quality-check pass for a single section — reuses the
-    same knowledge-base scope (Proposal.category_ids) and structured
-    requirements the original generation run used."""
-
-    section = await proposal_review_service.regenerate_section(db, section_id)
-    return _proposal_section_response(section)
-
-
-@router.post("/sections/{section_id}/approve", response_model=ProposalSectionResponse)
-async def approve_proposal_section(
-    section_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    section = await proposal_review_service.approve_section(db, section_id)
-    return _proposal_section_response(section)
-
-
 # ------------------------------------------------------------------
 # Proposal status tracking + export
 # ------------------------------------------------------------------
@@ -383,14 +428,27 @@ async def approve_proposal_section(
 async def set_proposal_status(
     proposal_id: int,
     status: ProposalStatus,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     """Manually moves the proposal-tracking status forward — mainly used to
     mark a proposal DONE once review is finished. Cannot move status
-    backward (e.g. generating -> inprogress)."""
+    backward (e.g. generating -> inprogress).
+
+    This is the deliberate "approve" action (as opposed to export's own,
+    unrelated auto-DONE side effect — see proposal_export_service): every
+    time it's called with status=done, it schedules a background re-
+    ingestion of the proposal's current content into the knowledge base
+    (see services.proposal_knowledge_service), not just on the first
+    transition. Calling this repeatedly after further edits re-indexes the
+    latest content each time."""
 
     proposal = await proposal_review_service.set_proposal_status(db, proposal_id, status)
+
+    if status == ProposalStatus.DONE:
+        background_tasks.add_task(ingest_proposal_as_knowledge, proposal.id)
+
     return _proposal_response(proposal)
 
 

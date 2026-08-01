@@ -23,6 +23,8 @@ from database.db_enum import (
     ProposalStatus,
     ProposalSectionStatus,
     GenerationMode,
+    SectionContentFormat,
+    KnowledgeSourceType,
 )
 
 
@@ -83,6 +85,14 @@ class KnowledgeDocument(BasicModel):
         default=DocumentAvailability.ACTIVE,
     )
     extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_type: Mapped[KnowledgeSourceType] = mapped_column(
+        SAEnum(KnowledgeSourceType, name="knowledgesourcetype"),
+        nullable=False,
+        default=KnowledgeSourceType.UPLOAD,
+    )
+    source_proposal_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("proposals.id"), nullable=True, unique=True
+    )
 
     category: Mapped["Category"] = relationship(back_populates="knowledge_document", lazy="selectin")
     uploader: Mapped["User"] = relationship(back_populates="knowledge_documents")
@@ -105,6 +115,7 @@ class KnowledgeChunk(BasicModel):
     page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     pinecone_vector_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    embedding_version: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     document: Mapped["KnowledgeDocument"] = relationship(back_populates="chunks")
 
@@ -181,6 +192,12 @@ class ProposalSection(BasicModel):
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     confidence_score: Mapped[Optional[float]] = mapped_column(nullable=True)
     review_flag: Mapped[bool] = mapped_column(nullable=False, default=False)
+    content_format: Mapped[SectionContentFormat] = mapped_column(
+        SAEnum(SectionContentFormat, name="sectioncontentformat"),
+        nullable=False,
+        default=SectionContentFormat.MARKDOWN,
+    )
+    structured_content: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
     proposal: Mapped["Proposal"] = relationship(back_populates="sections")
 
@@ -197,3 +214,4 @@ class OrganizationSettings(BasicModel):
     default_signee_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     default_signee_designation: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     logo_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    proposal_naming_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

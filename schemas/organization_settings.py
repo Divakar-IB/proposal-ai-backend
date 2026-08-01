@@ -10,6 +10,7 @@ class OrganizationSettingsUpdateRequest(BaseModel):
     contact_email: Optional[str] = None
     default_signee_name: Optional[str] = None
     default_signee_designation: Optional[str] = None
+    proposal_naming_template: Optional[str] = None
 
     @field_validator("contact_email")
     @classmethod
@@ -28,6 +29,7 @@ class OrganizationSettingsResponse(BaseModel):
     contact_email: Optional[str] = None
     default_signee_name: Optional[str] = None
     default_signee_designation: Optional[str] = None
+    proposal_naming_template: Optional[str] = None
     logo_url: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

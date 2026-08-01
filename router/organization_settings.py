@@ -37,6 +37,7 @@ def _to_response(settings: Optional[OrganizationSettings]) -> OrganizationSettin
         contact_email=settings.contact_email,
         default_signee_name=settings.default_signee_name,
         default_signee_designation=settings.default_signee_designation,
+        proposal_naming_template=settings.proposal_naming_template,
         logo_url=s3_service.generate_presigned_url(settings.logo_path) if settings.logo_path else None,
         created_at=settings.created_at,
         updated_at=settings.updated_at,

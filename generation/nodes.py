@@ -1,6 +1,8 @@
 import json
 from typing import Any, Iterator, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from database.db_enum import ProposalSectionStatus
 from embedding.embedder import embed_query
 from generation.schema import QualityCheckResult
@@ -11,6 +13,11 @@ from prompts.proposal_review import (
     QUALITY_CHECK_TOOL,
     QUALITY_CHECK_USER_TEMPLATE,
     TOOL_NAME as QUALITY_CHECK_TOOL_NAME,
+)
+from services.citation_service import (
+    label_section_citation,
+    resolve_and_filter_chunks,
+    retrieval_pool_size,
 )
 from vectorstore.knowledge_store import query_chunks
 
@@ -37,6 +44,7 @@ def _build_query_text(section_state: dict, requirements: dict) -> str:
 
 
 async def retrieve_chunks_for_section(
+    db: AsyncSession,
     section_state: dict[str, Any],
     requirements: dict,
     category_ids: Optional[list[int]],
@@ -45,7 +53,13 @@ async def retrieve_chunks_for_section(
     """Per-section retrieval — each section queries the knowledge base with
     its own query_fields-derived text, scoped to the proposal's
     category_ids, rather than one retrieval pass shared across the whole
-    document."""
+    document.
+
+    Excludes chunks sourced from a previously approved proposal by default
+    (see services.citation_service.resolve_and_filter_chunks) — otherwise
+    another client's approved content could get pasted verbatim into this
+    draft. The resolved source documents are stashed on section_state so
+    section_citations (below) can label them without a second lookup."""
 
     if not has_knowledge:
         return []
@@ -55,7 +69,15 @@ async def retrieve_chunks_for_section(
         return []
 
     query_embedding = embed_query(query_text)
-    return query_chunks(query_embedding, top_k=TOP_K_SECTION_CHUNKS, category_ids=category_ids)
+    pool = query_chunks(
+        query_embedding, top_k=retrieval_pool_size(TOP_K_SECTION_CHUNKS), category_ids=category_ids
+    )
+
+    resolved = await resolve_and_filter_chunks(db, pool, top_k=TOP_K_SECTION_CHUNKS)
+    section_state["_document_by_id"] = {
+        document.id: document for _chunk, document in resolved if document is not None
+    }
+    return [chunk for chunk, _document in resolved]
 
 
 def _build_draft_messages(section_state: dict[str, Any], requirements_json: str) -> list[dict]:
@@ -75,11 +97,9 @@ def _build_draft_messages(section_state: dict[str, Any], requirements_json: str)
 
 
 def section_citations(section_state: dict[str, Any]) -> list[dict]:
+    document_by_id = section_state.get("_document_by_id", {})
     return [
-        {
-            "breadcrumb": chunk["breadcrumb"],
-            "source_filename": chunk.get("source_filename"),
-        }
+        label_section_citation(chunk, document_by_id.get(chunk.get("document_id")))
         for chunk in section_state["retrieved_chunks"]
     ]
 

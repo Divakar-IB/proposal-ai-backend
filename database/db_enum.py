@@ -41,3 +41,21 @@ class GenerationMode(str, Enum):
 class DocumentAvailability(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
+
+
+class SectionContentFormat(str, Enum):
+    """How ProposalSection.content/structured_content should be read. Most
+    sections are MARKDOWN (content is the authoritative source); a few
+    (pricing, milestones) are STRUCTURED (structured_content is
+    authoritative, content is a rendered Markdown fallback for consumers
+    that only read plain text, e.g. knowledge-ingestion chunking)."""
+
+    MARKDOWN = "markdown"
+    STRUCTURED = "structured"
+
+
+class KnowledgeSourceType(str, Enum):
+    """Where a KnowledgeDocument's content originated from."""
+
+    UPLOAD = "upload"
+    PROPOSAL = "proposal"

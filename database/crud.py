@@ -5,7 +5,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from database.db_enum import DocumentAvailability, ProposalStatus
+from database.db_enum import DocumentAvailability, KnowledgeSourceType, ProposalStatus
 from database.models import (
     Category,
     KnowledgeChunk,
@@ -21,6 +21,31 @@ from database.models import (
 async def get_active_categories(db: AsyncSession) -> list[Category]:
     result = await db.execute(select(Category).filter(Category.is_active.is_(True)))
     return list(result.scalars().all())
+
+
+async def get_category_by_name(db: AsyncSession, name: str) -> Category | None:
+    result = await db.execute(
+        select(Category).filter(Category.name == name, Category.is_active.is_(True))
+    )
+    return result.scalars().first()
+
+
+async def create_category(db: AsyncSession, category: Category) -> Category:
+    db.add(category)
+    await db.commit()
+    await db.refresh(category)
+    return category
+
+
+async def get_or_create_category(db: AsyncSession, name: str) -> Category:
+    """Used to lazily provision system categories (e.g. "Generated
+    Proposals" for proposal-derived knowledge documents) without requiring
+    an admin to create them by hand first."""
+
+    category = await get_category_by_name(db, name)
+    if category is not None:
+        return category
+    return await create_category(db, Category(name=name))
 
 
 async def has_any_knowledge_chunks(db: AsyncSession) -> bool:
@@ -115,8 +140,16 @@ def build_knowledge_documents_query(
     category_id: Optional[int] = None,
     search: Optional[str] = None,
     knowledge_status: Optional[DocumentAvailability] = None,
+    include_generated: bool = False,
 ) -> Select:
+    """`include_generated=False` (the default) hides documents that were
+    auto-ingested from an approved proposal (source_type=PROPOSAL) — the
+    manual-upload listing shouldn't silently mix in proposal-derived entries
+    unless a caller explicitly asks to see them."""
+
     query = select(KnowledgeDocument).filter(KnowledgeDocument.is_active.is_(True))
+    if not include_generated:
+        query = query.filter(KnowledgeDocument.source_type == KnowledgeSourceType.UPLOAD)
     if category_id is not None:
         query = query.filter(KnowledgeDocument.category_id == category_id)
     if search:
