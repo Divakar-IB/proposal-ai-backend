@@ -47,13 +47,11 @@ async def retrieve_chunks_for_section(
     db: AsyncSession,
     section_state: dict[str, Any],
     requirements: dict,
-    category_ids: Optional[list[int]],
     has_knowledge: bool,
 ) -> list[dict]:
     """Per-section retrieval — each section queries the knowledge base with
-    its own query_fields-derived text, scoped to the proposal's
-    category_ids, rather than one retrieval pass shared across the whole
-    document.
+    its own query_fields-derived text, rather than one retrieval pass shared
+    across the whole document.
 
     Excludes chunks sourced from a previously approved proposal by default
     (see services.citation_service.resolve_and_filter_chunks) — otherwise
@@ -69,9 +67,7 @@ async def retrieve_chunks_for_section(
         return []
 
     query_embedding = embed_query(query_text)
-    pool = query_chunks(
-        query_embedding, top_k=retrieval_pool_size(TOP_K_SECTION_CHUNKS), category_ids=category_ids
-    )
+    pool = query_chunks(query_embedding, top_k=retrieval_pool_size(TOP_K_SECTION_CHUNKS))
 
     resolved = await resolve_and_filter_chunks(db, pool, top_k=TOP_K_SECTION_CHUNKS)
     section_state["_document_by_id"] = {

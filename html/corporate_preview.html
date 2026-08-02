@@ -5,8 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Corporate Template</title>
 <style>
+  /* .page is fluid + centred; never give it a fixed pixel width or the page
+     sits in the left half of a wide browser window with the rest blank.
+     @page owns the paper size for the WeasyPrint PDF export. */
+  @page { size: A4; margin: 0; }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #1a1a1a; width: 794px; min-height: 1123px; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #e9edf2; color: #1a1a1a; }
+  .page {
+    width: 100%;
+    max-width: 794px;
+    min-height: 1123px;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+  }
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; min-height: 0; margin: 0; box-shadow: none; }
+  }
 
   /* Header bar */
   .topbar {
@@ -55,12 +72,21 @@
     color: rgba(255,255,255,0.6);
     margin-bottom: 48px;
   }
+  /* display:table / table-cell rather than grid or flex+gap — WeasyPrint (the
+     PDF renderer) has unreliable CSS Grid support and no flexbox `gap`, which
+     previously pushed this template's whole body onto page 2 and left page 1
+     half blank. */
   .cover-table {
     border-top: 1px solid rgba(255,255,255,0.12);
     padding-top: 28px;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
+    display: table;
+    width: 100%;
+  }
+  .cover-table-cell {
+    display: table-cell;
+    width: 33.33%;
+    padding-right: 24px;
+    vertical-align: top;
   }
   .cover-table-cell label {
     display: block;
@@ -79,12 +105,17 @@
   .gold { color: #c8972a; }
 
   /* Body */
+  /* No min-height here: a tall fixed minimum could not fit in the space left
+     under the cover, so WeasyPrint moved the entire body to page 2 and left
+     page 1 mostly empty. */
   .body {
-    display: grid;
-    grid-template-columns: 200px 1fr;
-    min-height: 760px;
+    display: table;
+    width: 100%;
   }
   .sidebar {
+    display: table-cell;
+    width: 200px;
+    vertical-align: top;
     background: #f8f8f8;
     border-right: 1px solid #e8e8e8;
     padding: 36px 24px;
@@ -123,26 +154,31 @@
     margin-bottom: 2px;
   }
 
-  .main { padding: 40px 44px; }
+  .main { display: table-cell; vertical-align: top; padding: 40px 44px; }
 
   .section { margin-bottom: 36px; }
   .section-header {
-    display: flex;
-    align-items: center;
-    gap: 0;
+    display: table;
+    width: 100%;
     margin-bottom: 16px;
     border-bottom: 2px solid #0f2744;
     padding-bottom: 10px;
   }
   .section h2 {
+    display: table-cell;
+    vertical-align: bottom;
     font-size: 15px;
     font-weight: 700;
     color: #0f2744;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    flex: 1;
   }
   .section-num-label {
+    display: table-cell;
+    vertical-align: bottom;
+    text-align: right;
+    white-space: nowrap;
+    width: 1%;
     font-size: 10px;
     font-weight: 700;
     color: #c8972a;
@@ -154,6 +190,50 @@
     color: #444;
     margin-bottom: 12px;
   }
+  /* Markdown-derived section content (see rendering/html_renderer.py). */
+  .section h1, .section h3, .section h4 {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0f2744;
+    margin: 16px 0 8px;
+    page-break-after: avoid;
+  }
+  .section ul, .section ol { margin: 12px 0; padding-left: 20px; }
+  .section li { font-size: 13px; line-height: 1.75; color: #444; margin-bottom: 4px; }
+  .section blockquote {
+    background: #f0f4fa;
+    border-left: 3px solid #c8972a;
+    padding: 12px 16px;
+    margin: 16px 0;
+    font-size: 13px;
+    color: #0f2744;
+  }
+  .section table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 12px;
+    page-break-inside: auto;
+  }
+  .section table tr { page-break-inside: avoid; }
+  .section table th {
+    background: #0f2744;
+    color: #fff;
+    text-align: left;
+    padding: 8px 11px;
+    border: 1px solid #0f2744;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 10px;
+  }
+  .section table td {
+    padding: 8px 11px;
+    border: 1px solid #e4e4e4;
+    vertical-align: top;
+  }
+  .section table tbody tr:nth-child(even) { background: #fafafa; }
+
   .callout {
     background: #f0f4fa;
     border: 1px solid #d4dff0;
@@ -166,12 +246,16 @@
     margin: 16px 0;
   }
   .info-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    display: table;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 6px 0;
     margin: 16px 0;
   }
   .info-cell {
+    display: table-cell;
+    width: 50%;
+    vertical-align: top;
     background: #f8f8f8;
     border: 1px solid #eee;
     border-radius: 6px;
@@ -205,6 +289,8 @@
 </style>
 </head>
 <body>
+
+<div class="page">
 
 <div class="topbar">
   <div class="topbar-logo">InnoBoon Technologies</div>
@@ -240,6 +326,10 @@
         <span class="num">{{ "%02d"|format(loop.index) }}</span>
         {{ section.title }}
       </li>
+      {% else %}
+      <li class="active"><span class="num">01</span>Executive Summary</li>
+      <li><span class="num">02</span>Understanding of Requirements</li>
+      <li><span class="num">03</span>Commercial Proposal</li>
       {% endfor %}
     </ul>
   </div>
@@ -254,6 +344,41 @@
       </div>
       {{ section.content_html | safe }}
     </div>
+    {% else %}
+    <!-- Dummy content: only shown when this file is opened directly as a
+         preview with no proposal data bound. -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Executive Summary</h2>
+        <span class="section-num-label">01</span>
+      </div>
+      <p>InnoBoon Technologies proposes a phased cloud migration and digital
+      transformation programme for Meridian Financial Services, delivering a 34%
+      reduction in infrastructure cost and a 99.99% availability SLA within
+      20 weeks.</p>
+      <div class="callout">The lift-shift-optimise model reduces infrastructure
+      cost by an estimated 34% while raising availability to a 99.99% SLA.</div>
+    </div>
+    <div class="section">
+      <div class="section-header">
+        <h2>Understanding of Requirements</h2>
+        <span class="section-num-label">02</span>
+      </div>
+      <p>Meridian operates a core banking platform across two data centres with
+      an ageing virtualisation estate.</p>
+      <div class="info-grid">
+        <div class="info-cell"><label>Programme duration</label><span>20 weeks</span></div>
+        <div class="info-cell"><label>Availability target</label><span>99.99% SLA</span></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">
+        <h2>Commercial Proposal</h2>
+        <span class="section-num-label">03</span>
+      </div>
+      <p>Total programme investment is 296,000 USD across 20 weeks, fixed for
+      the scope described and valid for 60 days from the submission date.</p>
+    </div>
     {% endfor %}
 
   </div>
@@ -264,6 +389,8 @@
   <span>Commercial in Confidence</span>
   <span>{{ generated_date }}</span>
 </footer>
+
+</div>
 
 </body>
 </html>

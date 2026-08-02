@@ -17,22 +17,20 @@ def upsert_chunks(
     source_filename: str,
     chunks: list[Chunk],
     embeddings: list[list[float]],
-    source_type: Optional[str] = None,
     source_proposal_id: Optional[int] = None,
     organization_name: Optional[str] = None,
-    embedding_version: Optional[str] = None,
 ) -> list[str]:
     """Upserts embedded chunks into Pinecone with structured metadata.
     Returns the Pinecone vector IDs in the same order as `chunks`, so the
     caller can persist them onto the corresponding KnowledgeChunk rows.
 
-    `source_type`/`source_proposal_id`/`organization_name`/`embedding_version`
-    are additive, optional metadata (omitted entirely when not passed) used
-    to attribute chunks originating from an approved proposal rather than a
-    manually uploaded document — see services.citation_service. They are
-    not used to filter retrieval; query_chunks callers that need to exclude
-    proposal-derived content do so by resolving each hit's source document
-    in Postgres instead (see generation/nodes.py, tasks/requirement_processing.py)."""
+    `source_proposal_id`/`organization_name` are additive, optional metadata
+    (omitted entirely when not passed) used to attribute chunks originating
+    from an approved proposal rather than a manually uploaded document — see
+    services.citation_service. They are not used to filter retrieval;
+    query_chunks callers that need to exclude proposal-derived content do so
+    by resolving each hit's source document in Postgres instead (see
+    generation/nodes.py, tasks/requirement_processing.py)."""
 
     index = PineconeService.get_index()
     vector_ids = [build_vector_id(document_id, chunk.chunk_index) for chunk in chunks]
@@ -40,10 +38,8 @@ def upsert_chunks(
     extra_metadata = {
         key: value
         for key, value in {
-            "source_type": source_type,
             "source_proposal_id": source_proposal_id,
             "organization_name": organization_name,
-            "embedding_version": embedding_version,
         }.items()
         if value is not None
     }
@@ -56,7 +52,6 @@ def upsert_chunks(
                 "document_id": document_id,
                 "category_id": category_id,
                 "breadcrumb": chunk.breadcrumb,
-                "page_number": chunk.page_number or 0,
                 "chunk_index": chunk.chunk_index,
                 "source_filename": source_filename,
                 "text": chunk.content,
@@ -81,22 +76,16 @@ def delete_document_vectors(document_id: int) -> None:
         pass
 
 
-def query_chunks(
-    query_embedding: list[float],
-    top_k: int = 5,
-    category_ids: Optional[list[int]] = None,
-) -> list[dict]:
-    """Queries Pinecone with optional metadata filtering by category.
-    Returns a list of {text, breadcrumb, document_id, page_number, score, source_filename}."""
+def query_chunks(query_embedding: list[float], top_k: int = 5) -> list[dict]:
+    """Queries Pinecone for the nearest chunks.
+    Returns a list of {text, breadcrumb, document_id, score, source_filename}."""
 
     index = PineconeService.get_index()
-    query_filter = {"category_id": {"$in": category_ids}} if category_ids else None
 
     response = index.query(
         vector=query_embedding,
         top_k=top_k,
         include_metadata=True,
-        filter=query_filter,
     )
 
     return [
@@ -104,7 +93,6 @@ def query_chunks(
             "text": match["metadata"].get("text", ""),
             "breadcrumb": match["metadata"].get("breadcrumb", ""),
             "document_id": match["metadata"].get("document_id"),
-            "page_number": match["metadata"].get("page_number"),
             "source_filename": match["metadata"].get("source_filename"),
             "score": match["score"],
         }

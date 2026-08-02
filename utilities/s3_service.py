@@ -160,15 +160,6 @@ class S3Service:
 
         return response["Body"].read()
 
-    def download_fileobj(self, file_path: str) -> BytesIO:
-        """Downloads into an in-memory buffer, positioned at the start."""
-
-        buffer = BytesIO()
-        self.client.download_fileobj(self.bucket, file_path, buffer)
-        buffer.seek(0)
-
-        return buffer
-
     def download_to_tempfile(self, file_path: str, suffix: str = "") -> str:
         """
         Downloads to a local temp file and returns its path.
@@ -250,17 +241,6 @@ class S3Service:
         return self.move_file(
             old_path,
             new_path,
-        )
-
-    # Metadata
-    def get_metadata(
-        self,
-        file_path: str,
-    ):
-
-        return self.client.head_object(
-            Bucket=self.bucket,
-            Key=file_path,
         )
 
     # Presigned URL

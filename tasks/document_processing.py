@@ -3,7 +3,6 @@ from typing import Optional
 
 from chunking.models import Chunk
 from chunking.pipeline import chunk_document
-from config import config
 from database.crud import (
     create_knowledge_chunks,
     delete_knowledge_chunks_for_document,
@@ -12,7 +11,7 @@ from database.crud import (
     update_knowledge_document,
 )
 from database.database import db_session
-from database.db_enum import IngestionStatus, KnowledgeSourceType
+from database.db_enum import IngestionStatus
 from database.models import KnowledgeChunk
 from embedding.embedder import embed_texts
 from extraction.base import ExtractedDocument
@@ -84,7 +83,6 @@ async def process_knowledge_document(document_id: int) -> None:
 
             embeddings = generate_embeddings(chunks)
             logger.info("embeddings generated | document_id=%s count=%s", document_id, len(embeddings))
-            embedding_version = config.hf_inference.embedding_model
 
             # Re-processing (new version) wipes prior vectors/rows first — avoids orphaned
             # Pinecone vectors and duplicate KnowledgeChunk rows for the same document.
@@ -92,7 +90,7 @@ async def process_knowledge_document(document_id: int) -> None:
             await delete_knowledge_chunks_for_document(db, document_id)
 
             organization_name = None
-            if document.source_type == KnowledgeSourceType.PROPOSAL:
+            if document.source_proposal_id is not None:
                 org_settings = await get_organization_settings(db)
                 organization_name = org_settings.organization_name if org_settings else None
 
@@ -102,10 +100,8 @@ async def process_knowledge_document(document_id: int) -> None:
                 source_filename=document.file_name,
                 chunks=chunks,
                 embeddings=embeddings,
-                source_type=document.source_type.value,
                 source_proposal_id=document.source_proposal_id,
                 organization_name=organization_name,
-                embedding_version=embedding_version,
             )
             logger.info("pinecone upload completed | document_id=%s", document_id)
 
@@ -115,10 +111,8 @@ async def process_knowledge_document(document_id: int) -> None:
                     chunk_index=chunk.chunk_index,
                     breadcrumb=chunk.breadcrumb,
                     content=chunk.content,
-                    page_number=chunk.page_number,
                     token_count=chunk.token_count,
                     pinecone_vector_id=vector_id,
-                    embedding_version=embedding_version,
                 )
                 for chunk, vector_id in zip(chunks, vector_ids)
             ]

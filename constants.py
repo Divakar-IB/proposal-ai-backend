@@ -83,12 +83,16 @@ KNOWLEDGE_CATEGORIES = [
 # preview_key is the S3 object key; the presigned preview_url is generated
 # fresh per request (see router/proposals.py) instead of being baked in here
 # — a hardcoded presigned URL expires (that's what broke previously).
+# Drives GET /proposals/templates (name/description + S3 preview thumbnail).
+# The ids MUST match rendering.html_templates.HTML_TEMPLATES, which is what
+# actually gets rendered on export — nothing enforces it, and they previously
+# disagreed (id 1 was named "Modern" here but rendered template_1.html).
 EXPORT_TEMPLATES = [
     {
         "id": 1,
-        "name": "Modern",
-        "description": "Clean bold headings",
-        "preview_key": "proposal_templates/modern_preview",
+        "name": "Professional",
+        "description": "Formal business proposal — default",
+        "preview_key": "proposal_templates/professional_preview",
     },
     {
         "id": 2,
@@ -107,5 +111,11 @@ EXPORT_TEMPLATES = [
         "name": "Executive",
         "description": "C-suite summary layout",
         "preview_key": "proposal_templates/executive_preview",
+    },
+    {
+        "id": 5,
+        "name": "Modern",
+        "description": "Clean bold headings",
+        "preview_key": "proposal_templates/modern_preview",
     },
 ]

@@ -31,7 +31,6 @@ from schemas.proposal import (
     ProposalSectionResponse,
     ProposalSectionsReorderRequest,
     ProposalStateResponse,
-    SectionsBulkEditRequest,
     SummaryStep,
 )
 from schemas.requirement_document import RequirementDocumentResponse
@@ -77,8 +76,6 @@ def _proposal_section_response(section: ProposalSection) -> ProposalSectionRespo
         content=section.content,
         sources=section.citations,
         status=section.status,
-        confidence_score=section.confidence_score,
-        review_flag=section.review_flag,
     )
 
 
@@ -94,11 +91,6 @@ def _proposal_response(proposal: Proposal) -> ProposalResponse:
         page_count=proposal.page_count,
         status=proposal.status,
         markdown_path=proposal.markdown_path,
-        is_approved=proposal.is_approved,
-        approved_markdown=proposal.approved_markdown,
-        proposal_json=proposal.proposal_json,
-        docx_path=proposal.docx_path,
-        pdf_path=proposal.pdf_path,
         error_message=proposal.error_message,
         sections=[_proposal_section_response(section) for section in proposal.sections],
         created_at=proposal.created_at,

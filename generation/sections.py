@@ -18,16 +18,25 @@ def build_outline_instruction(outline: Optional[list[str]]) -> str:
     )
 
 
+# `weight` is each section's relative share of the document's word budget (see
+# generation/length_budget.py). It is a ratio, not a word count — the absolute
+# figures fall out of the caller's requested page_count. Weight a section by
+# how much it genuinely has to say: a section with a seven-item outline needs
+# several times the room of a one-paragraph declaration, and splitting the
+# budget equally is what previously made long sections overshoot the page
+# limit. Omitting `weight` defaults it to 1.0.
 SECTION_DEFINITIONS: list[dict] = [
     {
         "key": "executive_summary",
         "title": "Executive Summary",
         "query_fields": "project_title, scope",
+        "weight": 1.0,
     },
     {
         "key": "company_profile",
         "title": "Company Profile",
         "query_fields": "project_title, scope",
+        "weight": 1.0,
         "outline": [
             "About InnoBoon Technologies",
             "Relevant AI Capabilities",
@@ -37,11 +46,13 @@ SECTION_DEFINITIONS: list[dict] = [
         "key": "understanding_of_requirements",
         "title": "Understanding of Requirements",
         "query_fields": "scope, technical_requirements, constraints",
+        "weight": 1.2,
     },
     {
         "key": "proposed_solution",
         "title": "Proposed Solution",
         "query_fields": "deliverables, technical_requirements",
+        "weight": 3.0,
         "outline": [
             "Architecture Overview",
             "Use Case Solutions",
@@ -56,16 +67,19 @@ SECTION_DEFINITIONS: list[dict] = [
         "key": "technology_stack",
         "title": "Technology Stack",
         "query_fields": "technical_requirements",
+        "weight": 1.0,
     },
     {
         "key": "proposed_team_structure",
         "title": "Proposed Team Structure",
         "query_fields": "deliverables, project_title",
+        "weight": 0.8,
     },
     {
         "key": "project_implementation_plan",
         "title": "Project Implementation Plan",
         "query_fields": "timeline, deliverables",
+        "weight": 2.0,
         "outline": [
             "Phase 1 – Foundation",
             "Phase 2 – Use Case 1 & Use Case 3",
@@ -80,11 +94,13 @@ SECTION_DEFINITIONS: list[dict] = [
         "key": "non_functional_requirements_compliance",
         "title": "Non-Functional Requirements Compliance",
         "query_fields": "constraints, technical_requirements",
+        "weight": 1.0,
     },
     {
         "key": "security_and_data_privacy_framework",
         "title": "Security & Data Privacy Framework",
         "query_fields": "constraints, technical_requirements",
+        "weight": 1.8,
         "outline": [
             "Zero Egress Guarantee",
             "Data Access Architecture",
@@ -99,6 +115,7 @@ SECTION_DEFINITIONS: list[dict] = [
         "key": "commercial_proposal",
         "title": "Commercial Proposal",
         "query_fields": "budget_range, deliverables",
+        "weight": 1.2,
         "outline": [
             "Pricing Components",
             "Important Notes on Pricing",
@@ -108,10 +125,12 @@ SECTION_DEFINITIONS: list[dict] = [
         "key": "competitive_differentiators",
         "title": "InnoBoon's Competitive Differentiators",
         "query_fields": "project_title, scope, technical_requirements",
+        "weight": 0.8,
     },
     {
         "key": "declaration_and_authorised_undertaking",
         "title": "Declaration & Authorised Undertaking",
         "query_fields": "project_title",
+        "weight": 0.5,
     },
 ]

@@ -23,6 +23,14 @@ before writing:
   was retrieved. Absence of context is not a gap; it's the default case to write around.
 - Write in a professional, confident, client-facing tone. No filler, no apologies.
 - Output the section body only — do not repeat the section title as a heading.
+
+LENGTH IS A HARD CONSTRAINT. The drafting note below states a word range for this section.
+The proposal has a fixed page count agreed with the client and every section is allocated a
+share of it, so a section that runs over its range makes the whole document miss its page
+limit. Treat the upper bound as a limit you cannot cross, not a target to aim at. If the
+material does not fit, compress it — shorter sentences, bullets or a compact table instead of
+prose, and fewer examples — rather than dropping a required subsection or truncating
+mid-thought. Finish the section cleanly within the range.
 """
 
 DRAFT_USER_TEMPLATE = """# Section to draft

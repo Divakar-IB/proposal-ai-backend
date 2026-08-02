@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from database.crud import get_knowledge_document_by_id, get_or_create_category, get_proposal_by_id
 from database.database import db_session
-from database.db_enum import IngestionStatus, KnowledgeSourceType
+from database.db_enum import IngestionStatus
 from database.models import KnowledgeDocument, Proposal
 from generation.markdown_sections import assemble_markdown
 from tasks.document_processing import process_knowledge_document
@@ -71,7 +71,6 @@ async def get_or_create_proposal_knowledge_document(db, proposal: Proposal) -> K
             category_id=category.id,
             user_id=proposal.user_id,
             status=IngestionStatus.PENDING,
-            source_type=KnowledgeSourceType.PROPOSAL,
             source_proposal_id=proposal.id,
         )
         .on_conflict_do_update(

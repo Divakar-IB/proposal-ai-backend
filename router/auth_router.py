@@ -5,7 +5,6 @@ from authentication.auth_service import (
     create_user_by_admin,
     forgot_password,
     login,
-    refresh,
     register,
     reset_password,
     set_new_password,
@@ -25,10 +24,6 @@ from schemas.auth import (
     CreateUserResponse,
     LoginRequest,
     LoginResponse,
-    LogoutRequest,
-    LogoutResponse,
-    RefreshRequest,
-    RefreshResponse,
     RegisterRequest,
     RegisterResponse,
     VerifyOtpRequest,
@@ -56,22 +51,6 @@ async def login_user(
     db: AsyncSession = Depends(get_db),
 ):
     return await login(db=db, login_request=login_request)
-
-
-@router.post("/refresh", response_model=RefreshResponse)
-async def refresh_token(
-    refresh_request: RefreshRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    return await refresh(db=db, refresh_request=refresh_request)
-
-
-# @router.post("/logout", response_model=LogoutResponse)
-# def logout_user(
-#     logout_request: LogoutRequest,
-#     db: AsyncSession = Depends(get_db),
-# ):
-#     return logout(db=db, logout_request=logout_request)
 
 
 @router.post("/forgot_password", response_model=ForgotPasswordResponse)

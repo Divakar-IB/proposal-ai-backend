@@ -9,7 +9,6 @@ from authentication.jwt_handler import (
     create_password_reset_token,
     create_refresh_token,
     verify_password_reset_token,
-    verify_refresh_token,
 )
 from database.crud import (
     clear_user_otp,
@@ -31,10 +30,6 @@ from schemas.auth import (
     CreateUserResponse,
     LoginRequest,
     LoginResponse,
-    LogoutRequest,
-    LogoutResponse,
-    RefreshRequest,
-    RefreshResponse,
     RegisterRequest,
     RegisterResponse,
     VerifyOtpRequest,
@@ -93,29 +88,6 @@ async def register(db: AsyncSession, register_request: RegisterRequest) -> Regis
     await create_user(db, user)
 
     return RegisterResponse(message="Registered successfully", email=user.email)
-
-
-async def refresh(db: AsyncSession, refresh_request: RefreshRequest) -> RefreshResponse:
-    payload = verify_refresh_token(refresh_request.refresh_token)
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
-        )
-
-    user = await get_user_by_id(db, payload.get("user_id"))
-    if user is None or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-        )
-
-    new_access_token = create_access_token(
-        user_id=user.id,
-        email=user.email,
-        role=user.role.value,
-    )
-    return RefreshResponse(access_token=new_access_token)
 
 
 async def reset_password(

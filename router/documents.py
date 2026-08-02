@@ -12,7 +12,6 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -226,42 +225,6 @@ async def get_document(
     if document is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
     return _to_response(document)
-
-
-@router.get("/{document_id}/download")
-async def download_document(
-    document_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """Streams the file bytes from S3 through the API — forces a browser
-    download, unlike the presigned `url` on DocumentResponse which is meant
-    for inline rendering."""
-
-    document = await get_knowledge_document_by_id(db, document_id)
-    if document is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-
-    try:
-        metadata = s3_service.get_metadata(document.file_path)
-        content_type = metadata.get("ContentType", "application/octet-stream")
-        buffer = s3_service.download_fileobj(document.file_path)
-    except Exception:
-        logger.exception("download from S3 failed | document_id=%s", document_id)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Failed to download file from storage. Please try again.",
-        )
-
-    def iter_chunks(chunk_size: int = 64 * 1024):
-        while chunk := buffer.read(chunk_size):
-            yield chunk
-
-    return StreamingResponse(
-        iter_chunks(),
-        media_type=content_type,
-        headers={"Content-Disposition": f'attachment; filename="{document.file_name}"'},
-    )
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

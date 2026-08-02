@@ -1,277 +1,239 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proposal Template</title>
-    <style>
-        /* ==========================================================================
-           1. CORE & RESET STYLES
-           ========================================================================== */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Professional Template</title>
+<style>
+  /* ==========================================================================
+     Professional — the default proposal template (template_id 1).
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+     This template is deliberately constrained so the PDF and the DOCX come out
+     looking the same. Pandoc's HTML -> DOCX reader IGNORES CSS completely; it
+     only maps *structure* (h1..h4, p, ul/ol, table, strong/em) onto Word
+     styles, whose look comes from the --reference-doc
+     (rendering/assets/docx_templates/professional.docx).
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 10.5pt;
-            line-height: 1.6;
-            color: #2D3748;
-            background-color: #F7FAFC;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-        }
+     Rules to keep both formats identical — do not break these:
+       1. Colour ONLY headings and subheadings. Background fills, tinted
+          callouts and coloured table headers cannot survive the DOCX path.
+       2. Use semantic h1/h2/h3/h4. A styled <div> conveys nothing to Pandoc.
+            h1 = document/cover title   -> Word "Heading 1"  (heading colour)
+            h2 = section title          -> Word "Heading 2"  (heading colour)
+            h3 = subsection (from "###") -> Word "Heading 3" (subheading colour)
+            h4 = minor subsection       -> Word "Heading 4"  (subheading colour)
+       3. The two colours below are mirrored in generate_reference_docs.py
+          (HEADING_COLOR / SUBHEADING_COLOR). Change them in BOTH places.
+     ========================================================================== */
 
-        .document-container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: #FFFFFF;
-            padding: 50px 60px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
+  :root {
+    --heading: #0d2b5e;      /* headings      — mirrors HEADING_COLOR */
+    --subheading: #1a5fb4;   /* sub-headings  — mirrors SUBHEADING_COLOR */
+    --body: #1a1a1a;
+    --rule: #b9c2d0;
+  }
 
-        /* ==========================================================================
-           2. TYPOGRAPHY & HEADINGS
-           ========================================================================== */
-        h1, h2, h3, h4 {
-            color: #1A365D;
-            font-weight: 700;
-            line-height: 1.25;
-            margin-top: 1.5em;
-            margin-bottom: 0.5em;
-            page-break-after: avoid;
-        }
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
 
-        h1 {
-            font-size: 18pt;
-            border-bottom: 2px solid #3182CE;
-            padding-bottom: 6px;
-            margin-top: 2em;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        h2 {
-            font-size: 13.5pt;
-            color: #2B6CB0;
-            margin-top: 1.2em;
-        }
+  body {
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.6;
+    color: var(--body);
+    background: #e9edf2;
+  }
 
-        h3 {
-            font-size: 11pt;
-            color: #2D3748;
-        }
+  /* Fluid + centred, never a fixed pixel width (that leaves the page sitting
+     in the left half of a wide browser window). */
+  .page {
+    width: 100%;
+    max-width: 794px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 46px 52px;
+    box-shadow: 0 4px 18px rgba(13, 43, 94, 0.10);
+  }
 
-        p {
-            margin-bottom: 1em;
-            text-align: justify;
-        }
+  /* ---------- Headings (the only coloured elements) ---------- */
+  h1, h2, h3, h4 {
+    color: var(--heading);
+    font-weight: bold;
+    line-height: 1.25;
+    page-break-after: avoid;
+  }
+  h1 { font-size: 17pt; margin-bottom: 4px; }
+  h2 {
+    font-size: 13pt;
+    margin: 26px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--heading);
+  }
+  h3 { color: var(--subheading); font-size: 11pt; margin: 18px 0 8px; }
+  h4 { color: var(--subheading); font-size: 10.5pt; margin: 14px 0 6px; }
 
-        strong {
-            color: #1A202C;
-            font-weight: 600;
-        }
+  p { margin-bottom: 10px; }
+  strong { font-weight: bold; }
 
-        /* ==========================================================================
-           3. COVER / HEADER BLOCK
-           ========================================================================== */
-        .header-container {
-            border-bottom: 3px solid #1A365D;
-            padding-bottom: 20px;
-            margin-bottom: 25px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-        }
+  ul, ol { margin: 10px 0 12px 0; padding-left: 22px; }
+  li { margin-bottom: 4px; }
 
-        .company-branding {
-            font-size: 22pt;
-            font-weight: 800;
-            color: #1A365D;
-            letter-spacing: -0.5px;
-        }
+  blockquote {
+    margin: 14px 0;
+    padding-left: 16px;
+    border-left: 3px solid var(--rule);
+  }
 
-        .company-sub {
-            font-size: 9pt;
-            color: #718096;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
+  /* ---------- Tables: plain black-on-white, no colour fills ---------- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 10pt;
+    page-break-inside: auto;
+  }
+  table tr { page-break-inside: avoid; }
+  table th, table td {
+    border: 1px solid #7f7f7f;
+    padding: 7px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  table th { font-weight: bold; }
 
-        .header-contact {
-            text-align: right;
-            font-size: 8.5pt;
-            color: #718096;
-        }
+  /* ---------- Cover ---------- */
+  .cover { margin-bottom: 26px; }
+  /* No text-transform here: WeasyPrint applies it but Pandoc ignores CSS, so
+     the PDF would read "TECHNICAL & COMMERCIAL PROPOSAL" while the DOCX read
+     "Technical & Commercial Proposal". The markup carries the casing instead. */
+  .cover-kicker {
+    font-size: 10pt;
+    font-weight: bold;
+    letter-spacing: 1.5px;
+    margin-bottom: 18px;
+  }
+  .cover-tagline { margin-bottom: 22px; }
+  /* Label column of the cover fact table. Bold via <strong> in the markup as
+     well, so the emphasis also survives into the DOCX. */
+  table.cover-facts td:first-child { width: 32%; font-weight: bold; }
 
-        .document-title-block {
-            background-color: #EBF8FF;
-            border-left: 5px solid #3182CE;
-            padding: 20px;
-            margin: 20px 0 25px 0;
-            border-radius: 0 4px 4px 0;
-        }
+  .page-break { page-break-before: always; }
 
-        .document-title-block h0 {
-            display: block;
-            font-size: 18pt;
-            font-weight: 700;
-            color: #2B6CB0;
-            margin-bottom: 5px;
-        }
-
-        .document-subtitle {
-            font-size: 11pt;
-            color: #4A5568;
-        }
-
-        /* Metadata Grid Table */
-        .meta-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 30px;
-            font-size: 9.5pt;
-        }
-
-        .meta-table td {
-            padding: 8px 12px;
-            border-bottom: 1px solid #E2E8F0;
-        }
-
-        .meta-table tr td:first-child {
-            font-weight: 600;
-            color: #4A5568;
-            width: 30%;
-            background-color: #F7FAFC;
-        }
-
-        /* ==========================================================================
-           4. LISTS & CALLOUT BOXES
-           ========================================================================== */
-        ul, ol {
-            margin-bottom: 1em;
-            padding-left: 20px;
-        }
-
-        li {
-            margin-bottom: 0.4em;
-        }
-
-        .callout-box {
-            background-color: #EDF2F7;
-            border-left: 4px solid #4A5568;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 0 4px 4px 0;
-            font-size: 9.5pt;
-        }
-
-        .callout-box.confidential {
-            background-color: #FFF5F5;
-            border-left-color: #E53E3E;
-            color: #9B2C2C;
-        }
-
-        .callout-box.highlight {
-            background-color: #FEFCBF;
-            border-left-color: #D69E2E;
-            color: #744210;
-        }
-
-        /* ==========================================================================
-           5. DATA TABLES
-           ========================================================================== */
-        table.data-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            font-size: 9pt;
-            page-break-inside: auto;
-        }
-
-        table.data-table tr {
-            page-break-inside: avoid;
-            page-break-after: auto;
-        }
-
-        table.data-table th {
-            background-color: #2B6CB0;
-            color: #FFFFFF;
-            font-weight: 600;
-            text-align: left;
-            padding: 10px 12px;
-            border: 1px solid #2B6CB0;
-        }
-
-        table.data-table td {
-            padding: 9px 12px;
-            border: 1px solid #E2E8F0;
-            vertical-align: top;
-        }
-
-        table.data-table tbody tr:nth-child(even) {
-            background-color: #F7FAFC;
-        }
-
-        /* ==========================================================================
-           6. PRINT PREPARATION & PAGE BREAKS
-           ========================================================================== */
-        .page-break {
-            page-break-before: always;
-            break-before: page;
-        }
-
-        .footer {
-            margin-top: 40px;
-            padding-top: 15px;
-            border-top: 1px solid #E2E8F0;
-            font-size: 8pt;
-            color: #A0AEC0;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        @media print {
-            body {
-                background: none;
-            }
-            .document-container {
-                padding: 0;
-                box-shadow: none;
-                max-width: 100%;
-            }
-            @page {
-                size: A4;
-                margin: 20mm 15mm 20mm 15mm;
-            }
-        }
-    </style>
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; margin: 0; padding: 0; box-shadow: none; }
+  }
+</style>
 </head>
 <body>
 
-<div class="document-container">
+<div class="page">
 
-    <!-- Title Block -->
-    <div class="document-title-block">
-        <h0>{{ proposal_title }}</h0>
-    </div>
+  <!-- ================= Cover ================= -->
+  <div class="cover">
+    <h1>{{ organization_name | default('InnoBoon Technologies Pvt. Ltd.', true) }}</h1>
+    <p class="cover-tagline">{{ client_name | default('Meridian Financial Services', true) }} — Proposal</p>
 
-    <!-- Sections — each rendered from the proposal's stored Markdown,
-         pre-converted to HTML by rendering/html_renderer.py -->
+    <p class="cover-kicker">TECHNICAL &amp; COMMERCIAL PROPOSAL</p>
+    <h2>{{ proposal_title | default('Cloud Infrastructure &amp; Digital Transformation', true) }}</h2>
+
+    <table class="cover-facts">
+      <tr>
+        <td><strong>Organization</strong></td>
+        <td>{{ organization_name | default('InnoBoon Technologies Pvt. Ltd.', true) }}</td>
+      </tr>
+      <tr>
+        <td><strong>Submitted To</strong></td>
+        <td>{{ client_name | default('Meridian Financial Services', true) }}</td>
+      </tr>
+      <tr>
+        <td><strong>Contact Person</strong></td>
+        <td>{{ contact_name | default('—', true) }}</td>
+      </tr>
+      <tr>
+        <td><strong>Contact Email</strong></td>
+        <td>{{ contact_email | default('—', true) }}</td>
+      </tr>
+      <tr>
+        <td><strong>Date</strong></td>
+        <td>{{ generated_date | default('01 August 2026', true) }}</td>
+      </tr>
+      <tr>
+        <td><strong>Version</strong></td>
+        <td>{{ version | default('v1', true) }}</td>
+      </tr>
+      <tr>
+        <td><strong>Reference</strong></td>
+        <td>{{ reference | default('PROP-0000', true) }}</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- ================= Sections ================= -->
+  {% if sections %}
     {% for section in sections %}
-    <h1>{{ section.title }}</h1>
+    <h2>{{ section.title }}</h2>
     {{ section.content_html | safe }}
     {% endfor %}
+  {% else %}
+    <!-- Dummy content: only shown when this file is opened directly as a
+         preview with no proposal data bound. A real export always passes
+         `sections`, so this branch never appears in a live document. -->
+    <h2>Executive Summary</h2>
+    <p>InnoBoon Technologies proposes a phased cloud migration and digital
+    transformation programme for Meridian Financial Services. The engagement
+    delivers a <strong>34% reduction in infrastructure cost</strong>, a 99.99%
+    availability SLA, and a modernised foundation for future AI and data
+    capabilities.</p>
+    <p>With over 120 successful migrations delivered in the BFSI sector, we
+    bring the domain expertise this programme requires.</p>
 
-    <!-- Footer Block -->
-    <div class="footer">
-        <span>Confidential</span>
-        <span>{{ proposal_title }}</span>
-    </div>
+    <h2>Understanding of Requirements</h2>
+    <p>Meridian operates a core banking platform across two data centres with an
+    ageing virtualisation estate.</p>
+    <ul>
+      <li>Exit the secondary data centre within the financial year.</li>
+      <li>Achieve a 99.99% availability SLA for tier-1 services.</li>
+      <li>Maintain RBI IT Framework and PCI-DSS compliance throughout.</li>
+    </ul>
+
+    <h2>Proposed Solution</h2>
+    <h3>Phased delivery</h3>
+    <p>Delivery follows a three-phase model with defined entry and exit criteria
+    and a documented rollback procedure at every gate.</p>
+    <table>
+      <thead>
+        <tr><th>Phase</th><th>Duration</th><th>Key outcome</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Assessment</td><td>Weeks 1–4</td><td>Landing zone design</td></tr>
+        <tr><td>Migration</td><td>Weeks 5–14</td><td>Workloads live on target</td></tr>
+        <tr><td>Optimisation</td><td>Weeks 15–20</td><td>Cost tuning and handover</td></tr>
+      </tbody>
+    </table>
+    <h3>Migration approach</h3>
+    <p>Blue-green deployment with automated traffic shifting; change-data-capture
+    replication preserves transactional consistency across the cutover window.</p>
+
+    <h2>Commercial Proposal</h2>
+    <table>
+      <thead>
+        <tr><th>Workstream</th><th>Effort</th><th>Investment</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Assessment &amp; design</td><td>4 weeks</td><td>$48,000</td></tr>
+        <tr><td>Migration execution</td><td>10 weeks</td><td>$186,000</td></tr>
+        <tr><td>Optimisation &amp; handover</td><td>6 weeks</td><td>$62,000</td></tr>
+        <tr><td><strong>Total</strong></td><td><strong>20 weeks</strong></td><td><strong>$296,000</strong></td></tr>
+      </tbody>
+    </table>
+    <p>Pricing is fixed for the scope described above and remains valid for 60
+    days from the submission date.</p>
+  {% endif %}
 
 </div>
 

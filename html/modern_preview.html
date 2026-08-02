@@ -5,8 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Modern Template</title>
 <style>
+  /* .page is fluid + centred; never give it a fixed pixel width or the page
+     sits in the left half of a wide browser window with the rest blank.
+     @page owns the paper size for the WeasyPrint PDF export. */
+  @page { size: A4; margin: 0; }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #111; width: 794px; min-height: 1123px; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #e9edf2; color: #111; }
+  .page {
+    width: 100%;
+    max-width: 794px;
+    min-height: 1123px;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+  }
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; min-height: 0; margin: 0; box-shadow: none; }
+  }
 
   /* Cover */
   .cover {
@@ -69,13 +86,21 @@
     z-index: 1;
     margin-bottom: 48px;
   }
+  /* display:table / table-cell rather than flex+gap — WeasyPrint (the PDF
+     renderer) does not support the flexbox `gap` property, so a flex row
+     collapses its columns together in the exported PDF. */
   .cover-meta {
-    display: flex;
-    gap: 40px;
+    display: table;
+    width: 100%;
     position: relative;
     z-index: 1;
     padding-top: 32px;
     border-top: 1px solid rgba(255,255,255,0.15);
+  }
+  .meta-item {
+    display: table-cell;
+    padding-right: 40px;
+    vertical-align: top;
   }
   .meta-item label {
     display: block;
@@ -97,22 +122,26 @@
 
   .section { margin-bottom: 40px; }
   .section-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    display: table;
+    width: 100%;
     margin-bottom: 16px;
   }
   .section-num {
-    width: 28px; height: 28px;
+    display: table-cell;
+    width: 28px;
+    height: 28px;
     background: #4f46e5;
     color: #fff;
     border-radius: 8px;
     font-size: 12px;
     font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
+    text-align: center;
+    vertical-align: middle;
   }
   .section h2 {
+    display: table-cell;
+    padding-left: 12px;
+    vertical-align: middle;
     font-size: 17px;
     font-weight: 700;
     color: #111;
@@ -126,6 +155,47 @@
     color: #444;
     margin-bottom: 12px;
   }
+  /* Markdown-derived content (see rendering/html_renderer.py) */
+  .section-body h1, .section-body h2, .section-body h3, .section-body h4 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #4338ca;
+    margin: 16px 0 8px;
+    page-break-after: avoid;
+  }
+  .section-body ul, .section-body ol { margin: 12px 0; padding-left: 20px; }
+  .section-body li { font-size: 13.5px; line-height: 1.7; color: #444; margin-bottom: 4px; }
+  .section-body blockquote {
+    background: #f5f3ff;
+    border-left: 3px solid #4f46e5;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 18px;
+    margin: 16px 0;
+    color: #4338ca;
+    font-size: 13px;
+  }
+  .section-body table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 12.5px;
+    page-break-inside: auto;
+  }
+  .section-body table tr { page-break-inside: avoid; }
+  .section-body table th {
+    background: #4f46e5;
+    color: #fff;
+    text-align: left;
+    padding: 9px 12px;
+    border: 1px solid #4f46e5;
+    font-weight: 600;
+  }
+  .section-body table td {
+    padding: 8px 12px;
+    border: 1px solid #e8e8f0;
+    vertical-align: top;
+  }
+  .section-body table tbody tr:nth-child(even) { background: #f7f7fc; }
   .accent-bar {
     width: 3px; height: 100%;
     background: #4f46e5;
@@ -143,13 +213,10 @@
     line-height: 1.6;
     font-weight: 500;
   }
-  .tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 16px;
-  }
+  .tags { margin-top: 16px; }
   .tag {
+    display: inline-block;
+    margin: 0 6px 6px 0;
     background: #eef2ff;
     color: #4f46e5;
     border-radius: 20px;
@@ -179,29 +246,47 @@
 </head>
 <body>
 
+<div class="page">
+
 <div class="cover">
   <div class="org-label">InnoBoon Technologies</div>
   <div class="cover-tag">Business Proposal</div>
-  <h1>Cloud Infrastructure &amp;<br/>Digital Transformation</h1>
-  <p class="cover-sub">Prepared exclusively for Meridian Financial Services</p>
+  <h1>{{ proposal_title | default('Cloud Infrastructure &amp; Digital Transformation') }}</h1>
+  <p class="cover-sub">Prepared exclusively for {{ client_name | default('Meridian Financial Services') }}</p>
   <div class="cover-meta">
     <div class="meta-item">
       <label>Prepared for</label>
-      <span>Meridian Financial Services</span>
+      <span>{{ client_name | default('Meridian Financial Services') }}</span>
     </div>
     <div class="meta-item">
       <label>Date</label>
-      <span>July 2026</span>
+      <span>{{ generated_date | default('01 August 2026') }}</span>
     </div>
     <div class="meta-item">
       <label>Reference</label>
-      <span>RFP-2026-0041</span>
+      <span>{{ reference | default('RFP-2026-0041') }}</span>
     </div>
   </div>
 </div>
 
 <div class="body">
 
+  {% if sections %}
+    {% for section in sections %}
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">{{ "%02d"|format(loop.index) }}</div>
+        <h2>{{ section.title }}</h2>
+      </div>
+      <div class="section-body">
+        {{ section.content_html | safe }}
+      </div>
+    </div>
+    {% if not loop.last %}<div class="divider"></div>{% endif %}
+    {% endfor %}
+  {% else %}
+  <!-- Dummy content: only shown when this file is opened directly as a preview
+       with no proposal data bound. A real export always passes `sections`. -->
   <div class="section">
     <div class="section-header">
       <div class="section-num">01</div>
@@ -248,14 +333,17 @@
       <p>Compliance posture aligns with RBI IT Framework, PCI-DSS Level 1, and GDPR requirements as applicable to Meridian's cross-border operations.</p>
     </div>
   </div>
+  {% endif %}
 
 </div>
 
 <footer>
   <span class="logo">InnoBoon Technologies</span>
-  <span>Confidential · Page 1 of 8</span>
-  <span>July 2026</span>
+  <span>Confidential</span>
+  <span>{{ generated_date | default('01 August 2026') }}</span>
 </footer>
+
+</div>
 
 </body>
 </html>

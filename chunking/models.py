@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -10,4 +9,3 @@ class Chunk:
     breadcrumb: str
     chunk_index: int
     token_count: int
-    page_number: Optional[int] = None

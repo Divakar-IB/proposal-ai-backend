@@ -5,8 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Minimal Template</title>
 <style>
+  /* .page is fluid + centred; never give it a fixed pixel width or the page
+     sits in the left half of a wide browser window with the rest blank.
+     @page owns the paper size for the WeasyPrint PDF export. */
+  @page { size: A4; margin: 0; }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Georgia, 'Times New Roman', serif; background: #fff; color: #1a1a1a; width: 794px; min-height: 1123px; }
+  body { font-family: Georgia, 'Times New Roman', serif; background: #e9edf2; color: #1a1a1a; }
+  .page {
+    width: 100%;
+    max-width: 794px;
+    min-height: 1123px;
+    margin: 0 auto;
+    background: #fff;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+  }
+  @media print {
+    body { background: #fff; }
+    .page { max-width: none; min-height: 0; margin: 0; box-shadow: none; }
+  }
 
   /* Cover */
   .cover {
@@ -46,11 +63,19 @@
     color: #555;
     max-width: 520px;
   }
+  /* display:table / table-cell rather than flex+gap — WeasyPrint (the PDF
+     renderer) does not support the flexbox `gap` property, so a flex row
+     collapses its columns together in the exported PDF. */
   .cover-meta {
-    display: flex;
-    gap: 48px;
+    display: table;
+    width: 100%;
     margin-top: 56px;
     font-family: system-ui, -apple-system, sans-serif;
+  }
+  .meta-item {
+    display: table-cell;
+    padding-right: 48px;
+    vertical-align: top;
   }
   .meta-item label {
     display: block;
@@ -95,6 +120,52 @@
     color: #444;
     margin-bottom: 14px;
   }
+  /* Markdown-derived section content (see rendering/html_renderer.py): a
+     generated section can contain ### subheadings, lists and tables, not just
+     paragraphs. */
+  .section h1, .section h3, .section h4 {
+    font-size: 15px;
+    font-weight: 700;
+    color: #222;
+    margin: 20px 0 10px;
+    page-break-after: avoid;
+  }
+  .section ul, .section ol { margin: 12px 0; padding-left: 22px; }
+  .section li { font-size: 14px; line-height: 1.8; color: #444; margin-bottom: 4px; }
+  .section blockquote {
+    font-size: 15px;
+    font-style: italic;
+    line-height: 1.7;
+    color: #555;
+    border-left: 2px solid #ddd;
+    padding: 4px 20px;
+    margin: 20px 0;
+  }
+  .section table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 18px 0;
+    font-size: 13px;
+    page-break-inside: auto;
+  }
+  .section table tr { page-break-inside: avoid; }
+  .section table th {
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 2px solid #111;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #111;
+  }
+  .section table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #eee;
+    vertical-align: top;
+    color: #444;
+  }
+
   .pull-quote {
     font-size: 18px;
     font-style: italic;
@@ -114,15 +185,11 @@
     line-height: 1.7;
     padding: 6px 0;
     border-bottom: 1px solid #f5f5f5;
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
     font-family: system-ui, -apple-system, sans-serif;
   }
   .list li::before {
-    content: "—";
+    content: "— ";
     color: #ccc;
-    flex-shrink: 0;
   }
 
   /* Footer */
@@ -140,6 +207,8 @@
 </style>
 </head>
 <body>
+
+<div class="page">
 
 <div class="cover">
   <div class="cover-eyebrow">InnoBoon Technologies — Business Proposal</div>
@@ -164,13 +233,45 @@
 
 <div class="body">
 
-  {% for section in sections %}
+  {% if sections %}
+    {% for section in sections %}
+    <div class="section">
+      <div class="section-label">Section {{ "%02d"|format(loop.index) }}</div>
+      <h2>{{ section.title }}</h2>
+      {{ section.content_html | safe }}
+    </div>
+    {% endfor %}
+  {% else %}
+  <!-- Dummy content: only shown when this file is opened directly as a preview
+       with no proposal data bound. A real export always passes `sections`. -->
   <div class="section">
-    <div class="section-label">Section {{ "%02d"|format(loop.index) }}</div>
-    <h2>{{ section.title }}</h2>
-    {{ section.content_html | safe }}
+    <div class="section-label">Section 01</div>
+    <h2>Executive Summary</h2>
+    <p>InnoBoon Technologies proposes a phased cloud migration and digital
+    transformation programme for Meridian Financial Services, delivering a 34%
+    reduction in infrastructure cost and a 99.99% availability SLA within
+    20 weeks.</p>
+    <p class="pull-quote">With over 120 successful BFSI migrations delivered, we
+    bring the domain depth this programme requires.</p>
   </div>
-  {% endfor %}
+  <div class="section">
+    <div class="section-label">Section 02</div>
+    <h2>Understanding of Requirements</h2>
+    <p>Meridian operates a core banking platform across two data centres with an
+    ageing virtualisation estate.</p>
+    <ul class="list">
+      <li>Exit the secondary data centre within the financial year.</li>
+      <li>Achieve a 99.99% availability SLA for tier-1 services.</li>
+      <li>Maintain RBI IT Framework and PCI-DSS compliance throughout.</li>
+    </ul>
+  </div>
+  <div class="section">
+    <div class="section-label">Section 03</div>
+    <h2>Commercial Proposal</h2>
+    <p>Total programme investment is 296,000 USD across 20 weeks, fixed for the
+    scope described and valid for 60 days from the submission date.</p>
+  </div>
+  {% endif %}
 
 </div>
 
@@ -179,6 +280,8 @@
   <span>Confidential</span>
   <span>{{ generated_date }}</span>
 </footer>
+
+</div>
 
 </body>
 </html>

@@ -5,7 +5,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from database.db_enum import DocumentAvailability, KnowledgeSourceType, ProposalStatus
+from database.db_enum import DocumentAvailability, ProposalStatus
 from database.models import (
     Category,
     KnowledgeChunk,
@@ -143,13 +143,13 @@ def build_knowledge_documents_query(
     include_generated: bool = False,
 ) -> Select:
     """`include_generated=False` (the default) hides documents that were
-    auto-ingested from an approved proposal (source_type=PROPOSAL) — the
+    auto-ingested from an approved proposal (source_proposal_id is set) — the
     manual-upload listing shouldn't silently mix in proposal-derived entries
     unless a caller explicitly asks to see them."""
 
     query = select(KnowledgeDocument).filter(KnowledgeDocument.is_active.is_(True))
     if not include_generated:
-        query = query.filter(KnowledgeDocument.source_type == KnowledgeSourceType.UPLOAD)
+        query = query.filter(KnowledgeDocument.source_proposal_id.is_(None))
     if category_id is not None:
         query = query.filter(KnowledgeDocument.category_id == category_id)
     if search:
@@ -371,13 +371,3 @@ async def update_organization_settings(
     return settings
 
 
-async def get_categories_by_names(db: AsyncSession, names: list[str]) -> list[Category]:
-    """Resolves LLM-produced capability-tag names against the known Category
-    table — used to default /proposals/generate's category_ids when the
-    caller doesn't pass them explicitly."""
-    if not names:
-        return []
-    result = await db.execute(
-        select(Category).filter(Category.name.in_(names), Category.is_active.is_(True))
-    )
-    return list(result.scalars().all())

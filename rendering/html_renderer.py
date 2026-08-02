@@ -1,9 +1,12 @@
 from datetime import datetime
+from typing import Optional
 
 import pypandoc
 from jinja2 import Environment, FileSystemLoader
 
 from rendering.html_templates import get_html_template_path
+
+DEFAULT_PROPOSAL_VERSION = "v1"
 
 
 def _section_to_html(section: dict) -> str:
@@ -17,12 +20,25 @@ def _section_to_html(section: dict) -> str:
 
 
 def render_proposal_html(
-    proposal_json: dict, template_id: int, client_name: str, proposal_id: int
+    proposal_json: dict,
+    template_id: int,
+    client_name: str,
+    proposal_id: int,
+    organization_name: Optional[str] = None,
+    contact_name: Optional[str] = None,
+    contact_email: Optional[str] = None,
+    version: str = DEFAULT_PROPOSAL_VERSION,
 ) -> str:
     """JSON -> HTML: renders the selected html/template_N.html file with the
     proposal's title, client, reference, and sections. Each section's
     Markdown content is pre-converted to HTML before being handed to the
-    template."""
+    template.
+
+    The organization_* / contact_* values come from the single
+    OrganizationSettings row (see services/proposal_export_service.py) and
+    populate the cover page. Every one of them is optional on that model, so
+    templates must tolerate None — they fall back to a placeholder rather
+    than printing "None" into a client-facing document."""
 
     template_path = get_html_template_path(template_id)
     if template_path is None or not template_path.is_file():
@@ -41,5 +57,9 @@ def render_proposal_html(
         client_name=client_name,
         reference=f"PROP-{proposal_id}",
         generated_date=datetime.now().strftime("%d %B %Y"),
+        organization_name=organization_name or None,
+        contact_name=contact_name or None,
+        contact_email=contact_email or None,
+        version=version or DEFAULT_PROPOSAL_VERSION,
         sections=sections,
     )

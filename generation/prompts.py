@@ -1,4 +1,9 @@
-WORDS_PER_PAGE = 500
+"""UNUSED — the whole-document, single-call generation prompt. The live
+pipeline drafts section by section instead (generation/graph.py using
+prompts/proposal_generation.py), so nothing in this module is imported
+anywhere. WORDS_PER_PAGE moved to generation/length_budget.py, which owns the
+page-count -> word-budget conversion; do not re-add a second copy here.
+"""
 
 GENERATE_SYSTEM_PROMPT = """You are a senior proposal writer producing a complete, client-ready proposal
 as a single Markdown document.

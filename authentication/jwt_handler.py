@@ -37,6 +37,10 @@ def create_access_token(user_id: int, email: str, role: str) -> str:
 
 
 def create_refresh_token(user_id: int) -> str:
+    """Still issued by /auth/login (the login response contract includes
+    refresh_token), but there is no longer a /auth/refresh endpoint to redeem
+    it — the token is currently opaque to the backend once handed out."""
+
     payload = {
         "user_id": user_id,
         "token_type": "refresh",
@@ -59,16 +63,6 @@ def verify_access_token(token: str) -> dict | None:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], issuer=ISSUER)
         if payload.get("token_type") != "access":
-            raise JWTError("Invalid token type")
-        return payload
-    except JWTError:
-        return None
-
-
-def verify_refresh_token(token: str) -> dict | None:
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], issuer=ISSUER)
-        if payload.get("token_type") != "refresh":
             raise JWTError("Invalid token type")
         return payload
     except JWTError:

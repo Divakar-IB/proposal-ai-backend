@@ -45,36 +45,6 @@ class RegisterResponse(BaseModel):
     )
 
 
-# Refresh Token
-class RefreshRequest(BaseModel):
-    refresh_token: str
-
-
-class RefreshResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                "token_type": "bearer"
-            }
-        }
-    )
-
-
-
-
-# Logout
-class LogoutRequest(BaseModel):
-    refresh_token: str
-
-
-class LogoutResponse(BaseModel):
-    message: str
-
-
 # Reset Password
 class ResetPasswordRequest(BaseModel):
     current_password: str

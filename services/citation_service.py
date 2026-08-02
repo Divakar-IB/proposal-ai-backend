@@ -3,8 +3,15 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.crud import get_knowledge_documents_by_ids
-from database.db_enum import KnowledgeSourceType
 from database.models import KnowledgeDocument
+
+
+def _is_proposal_sourced(document: Optional[KnowledgeDocument]) -> bool:
+    """A KnowledgeDocument carries source_proposal_id only when it was
+    auto-ingested from an approved proposal (see
+    services.proposal_knowledge_service); a manual upload leaves it NULL."""
+
+    return document is not None and document.source_proposal_id is not None
 
 # Retrieval fetches this multiple of the caller's requested top_k from
 # Pinecone, so that after excluding proposal-derived chunks by default (see
@@ -31,9 +38,9 @@ async def resolve_and_filter_chunks(
     proposals).
 
     By default, drops any chunk whose source document was itself
-    auto-ingested from a previously approved proposal (source_type=PROPOSAL,
-    see services.proposal_knowledge_service) rather than a manually uploaded
-    document — otherwise another client's approved pricing/prose becomes
+    auto-ingested from a previously approved proposal (source_proposal_id is
+    set — see services.proposal_knowledge_service) rather than a manually
+    uploaded document — otherwise another client's approved pricing/prose becomes
     retrievable, and pastable verbatim into a brand-new client's draft via
     generation/nodes.py's build_context_block. Pass
     include_proposal_sources=True for call sites where surfacing that (e.g.
@@ -50,8 +57,7 @@ async def resolve_and_filter_chunks(
     resolved: list[tuple[dict, Optional[KnowledgeDocument]]] = []
     for chunk in chunks:
         document = document_by_id.get(chunk.get("document_id"))
-        is_proposal_sourced = document is not None and document.source_type == KnowledgeSourceType.PROPOSAL
-        if is_proposal_sourced and not include_proposal_sources:
+        if _is_proposal_sourced(document) and not include_proposal_sources:
             continue
         resolved.append((chunk, document))
         if len(resolved) >= top_k:
@@ -92,7 +98,7 @@ def label_knowledge_match(chunk: dict, document: Optional[KnowledgeDocument]) ->
         "type": "knowledge_document",
     }
 
-    if document is not None and document.source_type == KnowledgeSourceType.PROPOSAL:
+    if _is_proposal_sourced(document):
         match.update({
             "type": "proposal",
             "proposal_id": document.source_proposal_id,
@@ -114,7 +120,7 @@ def label_section_citation(chunk: dict, document: Optional[KnowledgeDocument]) -
         "type": "knowledge_document",
     }
 
-    if document is not None and document.source_type == KnowledgeSourceType.PROPOSAL:
+    if _is_proposal_sourced(document):
         citation.update({
             "type": "proposal",
             "proposal_id": document.source_proposal_id,

@@ -10,18 +10,30 @@ class SectionState(TypedDict):
     content: Optional[str]
     citations: list[dict[str, Any]]
     status: str  # ProposalSectionStatus value
-    retry_count: int
     feedback: Optional[str]
-    confidence_score: Optional[float]
-    review_flag: bool
 
 
 class ProposalGenerationState(TypedDict):
     requirement_document_id: int
     proposal_id: int
     user_id: int
-    category_ids: Optional[list[int]]
     requirements: dict[str, Any]
     sections: list[SectionState]
     max_retries: int
     error: Optional[str]
+
+    # Working fields used by generation/graph.py's node functions.
+    page_count: int
+    generation_mode: str  # GenerationMode value
+    requirements_json: str
+    proposal_title: str
+    client_name: str
+    additional_context: Optional[str]
+    # section key -> word budget for that section, summing to the requested
+    # page_count's word budget (see generation/length_budget.py).
+    word_targets: dict[str, int]
+    has_knowledge: bool
+    current_section_index: int
+    current_section: Optional[SectionState]
+    persisted_sections: list[dict[str, Any]]  # {title, content, order_index}
+    markdown_path: Optional[str]

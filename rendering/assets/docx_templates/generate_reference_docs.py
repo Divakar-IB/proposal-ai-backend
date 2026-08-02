@@ -61,7 +61,41 @@ def _build(filename: str, *, heading1, heading2, normal):
     document.save(_OUTPUT_DIR / filename)
 
 
+# The Professional (default) template's palette. Only headings and
+# subheadings are coloured — body text, tables and everything else stay
+# black, so the DOCX and the PDF can look the same. These two values are
+# duplicated in html/template_1.html's CSS (--heading / --subheading); change
+# both together or the two export formats drift apart.
+HEADING_COLOR = "0D2B5E"
+SUBHEADING_COLOR = "1A5FB4"
+BODY_FONT = "Arial"
+
+
+def _build_professional() -> None:
+    """Reference doc for html/template_1.html (template_id 1).
+
+    Pandoc maps HTML <h1>../<h4> onto the Heading 1..4 *styles* of this file,
+    so defining the colours here is what makes the DOCX export match the PDF —
+    Pandoc ignores the CSS in the HTML entirely.
+    """
+
+    document = Document()
+    _set_style(document, "Normal", BODY_FONT, 10.5, "1A1A1A", False)
+    _set_style(document, "Title", BODY_FONT, 22, HEADING_COLOR, True)
+    _set_style(document, "Heading 1", BODY_FONT, 17, HEADING_COLOR, True)
+    _set_style(document, "Heading 2", BODY_FONT, 13, HEADING_COLOR, True)
+    _set_style(document, "Heading 3", BODY_FONT, 11, SUBHEADING_COLOR, True)
+    _set_style(document, "Heading 4", BODY_FONT, 10.5, SUBHEADING_COLOR, True)
+    # Matches the PDF's rule under each section heading.
+    _add_heading_bottom_border(document, "Heading 2", HEADING_COLOR, size=8)
+    for style_name in ("Heading 1", "Heading 2", "Heading 3", "Heading 4"):
+        document.styles[style_name].paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    document.save(_OUTPUT_DIR / "professional.docx")
+
+
 def main():
+    _build_professional()
+
     _build(
         "classic_serif.docx",
         normal=("Georgia", 11, "1A1A1A", False),
@@ -88,7 +122,7 @@ def main():
     _add_heading_bottom_border(document, "Heading 1", "003366", size=18)
     document.save(_OUTPUT_DIR / "corporate_bold.docx")
 
-    print("Generated 4 reference .docx templates in", _OUTPUT_DIR)
+    print("Generated 5 reference .docx templates in", _OUTPUT_DIR)
 
 
 if __name__ == "__main__":

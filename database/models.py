@@ -23,8 +23,6 @@ from database.db_enum import (
     ProposalStatus,
     ProposalSectionStatus,
     GenerationMode,
-    SectionContentFormat,
-    KnowledgeSourceType,
 )
 
 
@@ -85,11 +83,10 @@ class KnowledgeDocument(BasicModel):
         default=DocumentAvailability.ACTIVE,
     )
     extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    source_type: Mapped[KnowledgeSourceType] = mapped_column(
-        SAEnum(KnowledgeSourceType, name="knowledgesourcetype"),
-        nullable=False,
-        default=KnowledgeSourceType.UPLOAD,
-    )
+    # Set only for documents auto-ingested from an approved proposal (see
+    # services.proposal_knowledge_service); NULL means a manual upload. The
+    # unique constraint is what keeps one proposal to at most one document,
+    # so re-approving re-indexes instead of duplicating.
     source_proposal_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("proposals.id"), nullable=True, unique=True
     )
@@ -112,10 +109,8 @@ class KnowledgeChunk(BasicModel):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     breadcrumb: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     pinecone_vector_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    embedding_version: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     document: Mapped["KnowledgeDocument"] = relationship(back_populates="chunks")
 
@@ -158,13 +153,7 @@ class Proposal(BasicModel):
     )
     page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     markdown_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    is_approved: Mapped[bool] = mapped_column(nullable=False, default=False)
-    approved_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    proposal_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    docx_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    pdf_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    category_ids: Mapped[Optional[list[int]]] = mapped_column(ARRAY(Integer), nullable=True)
 
     requirement_documents: Mapped[list["RequirementDocument"]] = relationship(
         back_populates="proposal", order_by="RequirementDocument.created_at", lazy="selectin"
@@ -189,15 +178,6 @@ class ProposalSection(BasicModel):
     status: Mapped[ProposalSectionStatus] = mapped_column(
         SAEnum(ProposalSectionStatus), nullable=False, default=ProposalSectionStatus.PENDING
     )
-    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    confidence_score: Mapped[Optional[float]] = mapped_column(nullable=True)
-    review_flag: Mapped[bool] = mapped_column(nullable=False, default=False)
-    content_format: Mapped[SectionContentFormat] = mapped_column(
-        SAEnum(SectionContentFormat, name="sectioncontentformat"),
-        nullable=False,
-        default=SectionContentFormat.MARKDOWN,
-    )
-    structured_content: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
     proposal: Mapped["Proposal"] = relationship(back_populates="sections")
 

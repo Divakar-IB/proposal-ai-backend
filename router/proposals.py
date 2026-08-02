@@ -45,7 +45,6 @@ from schemas.proposal import (
     ProposalSectionMinimal,
     ProposalSectionResponse,
     ProposalStatsResponse,
-    SectionsBulkEditRequest,
 )
 from schemas.requirement_document import RequirementDocumentResponse
 from services import proposal_export_service, proposal_review_service
@@ -101,8 +100,6 @@ def _proposal_section_response(section: ProposalSection) -> ProposalSectionRespo
         content=section.content,
         sources=section.citations,
         status=section.status,
-        confidence_score=section.confidence_score,
-        review_flag=section.review_flag,
     )
 
 
@@ -118,11 +115,6 @@ def _proposal_response(proposal: Proposal) -> ProposalResponse:
         page_count=proposal.page_count,
         status=proposal.status,
         markdown_path=proposal.markdown_path,
-        is_approved=proposal.is_approved,
-        approved_markdown=proposal.approved_markdown,
-        proposal_json=proposal.proposal_json,
-        docx_path=proposal.docx_path,
-        pdf_path=proposal.pdf_path,
         error_message=proposal.error_message,
         sections=[_proposal_section_response(section) for section in proposal.sections],
         created_at=proposal.created_at,
@@ -385,39 +377,6 @@ async def delete_proposal_endpoint(
 
     proposal = await _get_proposal_or_404(db, proposal_id)
     await delete_proposal(db, proposal)
-
-
-# @router.get("/{proposal_id}", response_model=ProposalDetailResponse)
-# async def get_proposal(
-#     proposal_id: int,
-#     db: AsyncSession = Depends(get_db),
-#     current_user: dict = Depends(get_current_user),
-# ):
-#     """Fetches the full proposal for viewing/review — trimmed to just what
-#     the reviewer UI needs: proposal identity/status plus each section's id
-#     and content, in order."""
-
-#     proposal = await _get_proposal_or_404(db, proposal_id)
-#     return _proposal_detail_response(proposal)
-
-
-# ------------------------------------------------------------------
-# Section editing / regeneration
-# ------------------------------------------------------------------
-
-@router.patch("/{proposal_id}/sections", response_model=list[ProposalSectionResponse])
-async def edit_proposal_sections(
-    proposal_id: int,
-    request: SectionsBulkEditRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """Manual edit of one or more sections' content in a single request —
-    leaves status/review_flag as-is; approving is a separate explicit
-    action below."""
-
-    sections = await proposal_review_service.edit_sections(db, proposal_id, request.sections)
-    return [_proposal_section_response(section) for section in sections]
 
 
 # ------------------------------------------------------------------

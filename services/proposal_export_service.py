@@ -1,12 +1,12 @@
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.crud import get_proposal_by_id, update_proposal
+from database.crud import get_organization_settings, get_proposal_by_id, update_proposal
 from database.db_enum import ProposalStatus
 from database.models import Proposal
 from generation.markdown_sections import assemble_markdown, markdown_to_json
 from rendering.html_renderer import render_proposal_html
-from rendering.html_templates import get_html_template_path
+from rendering.html_templates import get_docx_reference_path, get_html_template_path
 from rendering.renderer import render_docx_from_html, render_pdf_from_html
 from schemas.proposal import ExportFormat
 from utilities.email_service import EmailAttachment, send_proposal_export_email
@@ -61,14 +61,27 @@ async def render_proposal_document(
     if get_html_template_path(template_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
 
+    # Cover-page details come from the single OrganizationSettings row; every
+    # column on it is nullable and the row may not exist at all, so the
+    # template falls back to placeholders rather than printing "None".
+    settings = await get_organization_settings(db)
+
     proposal_json = _build_proposal_json(proposal)
     html = render_proposal_html(
-        proposal_json, template_id, client_name=proposal.client_name, proposal_id=proposal.id
+        proposal_json,
+        template_id,
+        client_name=proposal.client_name,
+        proposal_id=proposal.id,
+        organization_name=settings.organization_name if settings else None,
+        contact_name=settings.default_signee_name if settings else None,
+        contact_email=settings.contact_email if settings else None,
     )
 
     try:
         content = (
-            render_pdf_from_html(html) if export_format == ExportFormat.PDF else render_docx_from_html(html)
+            render_pdf_from_html(html)
+            if export_format == ExportFormat.PDF
+            else render_docx_from_html(html, reference_docx=get_docx_reference_path(template_id))
         )
     except Exception:
         logger.exception(
