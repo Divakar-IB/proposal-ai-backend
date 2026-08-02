@@ -4,7 +4,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
-from database.db_enum import GenerationMode, ProposalSectionStatus, ProposalStatus
+from database.db_enum import DocumentStatus, GenerationMode, ProposalSectionStatus, ProposalStatus
 from generation.length_budget import MIN_PROPOSAL_PAGES
 from rendering.html_templates import DEFAULT_TEMPLATE_ID
 from schemas.requirement_document import (
@@ -151,10 +151,28 @@ class ProposalDetailsStep(BaseModel):
     files: list[RequirementDocumentResponse] = []
 
 
-class SummaryStep(BaseModel):
+class FileSummary(BaseModel):
+    """Per-file view of what the parsing pipeline produced. A proposal can
+    have several requirement documents, each with its own summary/matches/
+    tags, so the wizard can show them side by side."""
+
+    document_id: int
+    file_name: str
+    status: DocumentStatus
     summary: Optional[str] = None
     knowledge_matches: list[KnowledgeMatch] = []
     capability_tags: list[CapabilityTagOut] = []
+
+
+class SummaryStep(BaseModel):
+    # Aggregated across every uploaded file. `summary` concatenates each
+    # file's summary under a "### {file_name}" heading when there is more
+    # than one; matches and tags are merged and de-duplicated, keeping the
+    # strongest score per knowledge document / capability.
+    summary: Optional[str] = None
+    knowledge_matches: list[KnowledgeMatch] = []
+    capability_tags: list[CapabilityTagOut] = []
+    files: list[FileSummary] = []
 
 
 class GenerationConfigStep(BaseModel):

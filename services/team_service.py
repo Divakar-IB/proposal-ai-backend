@@ -3,7 +3,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from authentication.dependency import hash_password
-from database.crud import build_users_query, create_user, delete_user, get_user_by_email, get_user_by_id, update_user
+from database.crud import (
+    build_users_query,
+    create_user,
+    delete_user,
+    get_user_by_email,
+    get_user_by_id,
+    update_user,
+)
 from database.db_enum import UserRole
 from database.models import User
 from schemas.team import InviteTeamMemberRequest
@@ -85,26 +92,76 @@ async def update_team_member_role(db: AsyncSession, *, user_id: int, new_role: U
     return user
 
 
-async def delete_team_member(db: AsyncSession, *, user_id: int, current_user_id: int) -> None:
-    user = await get_user_by_id(db, user_id)
-    if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found")
+async def _assert_removable(db: AsyncSession, user: User, current_user_id: int, action: str) -> None:
+    """Shared guards for deactivating or deleting a member: an admin must not
+    lock themselves out, and the organisation must not be left without an
+    admin who can administer it."""
 
     if user.id == current_user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot delete your own account",
+            detail=f"You cannot {action} your own account",
         )
 
     if user.role == UserRole.ADMIN:
         admin_count = await db.scalar(
-            select(func.count()).select_from(User).filter(User.role == UserRole.ADMIN, User.is_active.is_(True))
+            select(func.count()).select_from(User).filter(
+                User.role == UserRole.ADMIN, User.is_active.is_(True)
+            )
         )
         if admin_count <= 1:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot remove the last admin",
             )
+
+
+async def set_team_member_active(
+    db: AsyncSession, *, user_id: int, is_active: bool, current_user_id: int
+) -> User:
+    """Activates or deactivates a member.
+
+    Deactivating is the same state change as deleting (both set is_active =
+    False) — the difference is intent, not effect. A deactivated member keeps
+    their account and content and is still listed, but cannot log in: the
+    login path rejects an inactive user with a 403 (see
+    authentication/auth_service.login).
+    """
+
+    user = await get_user_by_id(db, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found")
+
+    if user.is_active == is_active:
+        return user  # already in the requested state — nothing to do
+
+    if not is_active:
+        await _assert_removable(db, user, current_user_id, action="deactivate")
+
+    user = await update_user(db, user, is_active=is_active)
+    logger.info(
+        "team member %s | user_id=%s email=%s",
+        "activated" if is_active else "deactivated", user.id, user.email,
+    )
+    return user
+
+
+async def delete_team_member(db: AsyncSession, *, user_id: int, current_user_id: int) -> None:
+    """Soft-deletes the member (is_active = False), the same pattern used for
+    every other resource in this codebase. Their proposals and uploaded
+    documents are deliberately left intact — that content belongs to the
+    organisation, not to the person who happened to upload it.
+
+    Note this leaves the row (and therefore the email address, which is
+    UNIQUE) in place, so the same address cannot be re-invited afterwards;
+    reactivate the member via PATCH /team/members/{id}/status instead.
+    """
+
+    user = await get_user_by_id(db, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found")
+
+    await _assert_removable(db, user, current_user_id, action="delete")
 
     await delete_user(db, user)
     logger.info("team member deleted | user_id=%s email=%s", user.id, user.email)

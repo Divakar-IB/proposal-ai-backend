@@ -8,7 +8,6 @@ from fastapi import (
     File,
     Form,
     HTTPException,
-    Response,
     UploadFile,
     status,
 )
@@ -62,51 +61,75 @@ def _to_response(document: KnowledgeDocument) -> DocumentResponse:
     )
 
 
+async def _resolve_category_or_404(db: AsyncSession, category_id: int) -> Category:
+    result = await db.execute(
+        select(Category).filter(Category.id == category_id, Category.is_active.is_(True))
+    )
+    category = result.scalars().first()
+    if category is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    return category
+
+
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
     background_tasks: BackgroundTasks,
-    # response: Response,
-    document_id: Optional[int] = Form(None),
-    document_name: str = Form(...),
-    description: str = Form(...),
-    category_id: int = Form(...),
-    availability_status: DocumentAvailability = Form(DocumentAvailability.ACTIVE),
-    tags: list[str] = Form(default_factory=list),
+     document_id: Optional[int] = Form(None),
+    
+    document_name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    category_id: Optional[int] = Form(None),
+    availability_status: Optional[DocumentAvailability] = Form(None),
+    tags: Optional[list[str]] = Form(None),
     file: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Creates a new document, or updates an existing one when `document_id`
-    is provided — `file` is optional on update (omit it to keep the current
-    file, or pass a new one to replace it)."""
+    """Creates a new knowledge document, or edits an existing one when the
+    `document_id` form field is supplied.
+
+    On edit every field is optional — send only what changed. Omitting `file`
+    keeps the current file; sending one replaces it and triggers a
+    re-chunk/re-embed in the background. On create, `document_name`,
+    `category_id` and `file` are required.
+    """
 
     user_id = current_user["user_id"]
 
-    category_result = await db.execute(
-        select(Category).filter(Category.id == category_id, Category.is_active.is_(True))
-    )
-    category = category_result.scalars().first()
-    if category is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    # A browser that submits a file input with nothing chosen still sends an
+    # empty part; treat that as "no file" rather than uploading a 0-byte object
+    # under a blank filename.
+    if file is not None and not (file.filename or "").strip():
+        file = None
 
+    # ------------------------------------------------------------------
+    # Edit an existing document
+    # ------------------------------------------------------------------
     if document_id is not None:
         document = await get_knowledge_document_by_id(db, document_id)
         if document is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-        updates = {
-            "title": document_name,
-            "description": description,
-            "category_id": category_id,
-            "availability_status": availability_status,
-            "tags": tags,
-        }
+        updates: dict = {}
+        if document_name is not None:
+            updates["title"] = document_name
+        if description is not None:
+            updates["description"] = description
+        if availability_status is not None:
+            updates["availability_status"] = availability_status
+        # `[]` is meaningful here (clear all tags); only `None` means untouched.
+        if tags is not None:
+            updates["tags"] = tags
+        if category_id is not None:
+            await _resolve_category_or_404(db, category_id)
+            updates["category_id"] = category_id
 
         if file is not None:
+            effective_category_id = category_id if category_id is not None else document.category_id
             extension = Path(file.filename or "").suffix.lstrip(".").lower()
             s3_key = S3PathBuilder.knowledge_document(
                 user_id=user_id,
-                category_id=category_id,
+                category_id=effective_category_id,
                 filename=file.filename,
                 document_id=document_id,
             )
@@ -114,7 +137,8 @@ async def upload_document(
                 s3_service.upload_file(file, s3_key)
             except Exception:
                 logger.exception(
-                    "re-upload to S3 failed | document_id=%s filename=%s", document_id, file.filename
+                    "re-upload to S3 failed | document_id=%s filename=%s",
+                    document_id, file.filename,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
@@ -131,21 +155,37 @@ async def upload_document(
             s3_service.delete_file(old_file_path)
             logger.info("file replaced | document_id=%s key=%s", document_id, s3_key)
 
-        document = await update_knowledge_document(db, document, **updates)
-        logger.info("document updated | document_id=%s", document.id)
+        if updates:
+            document = await update_knowledge_document(db, document, **updates)
+        logger.info(
+            "document updated | document_id=%s fields=%s file_replaced=%s",
+            document.id, sorted(updates), file is not None,
+        )
 
         if file is not None:
             # File content changed — re-chunk/re-embed/re-upsert in the background.
             background_tasks.add_task(process_knowledge_document, document.id)
 
-        # response.status_code = status.HTTP_200_OK
         return _to_response(document)
 
-    if file is None:
+    # ------------------------------------------------------------------
+    # Create a new document
+    # ------------------------------------------------------------------
+    missing = [
+        name for name, value in (
+            ("document_name", document_name), ("category_id", category_id), ("file", file)
+        ) if value is None
+    ]
+    if missing:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="file is required when creating a document",
+            detail=(
+                f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} required when "
+                "creating a document. To edit an existing one, pass document_id."
+            ),
         )
+
+    await _resolve_category_or_404(db, category_id)
 
     logger.info(
         "upload started | user_id=%s category_id=%s filename=%s",
@@ -178,15 +218,14 @@ async def upload_document(
         extension=extension,
         category_id=category_id,
         user_id=user_id,
-        tags=tags,
-        availability_status=availability_status,
+        tags=tags or [],
+        availability_status=availability_status or DocumentAvailability.ACTIVE,
     )
     document = await create_knowledge_document(db, document)
     logger.info("database entry created | document_id=%s", document.id)
 
     background_tasks.add_task(process_knowledge_document, document.id)
 
-    # response.status_code = status.HTTP_201_CREATED
     return _to_response(document)
 
 

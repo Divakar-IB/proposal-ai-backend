@@ -105,46 +105,50 @@
   .gold { color: #c8972a; }
 
   /* Body */
-  /* No min-height here: a tall fixed minimum could not fit in the space left
-     under the cover, so WeasyPrint moved the entire body to page 2 and left
-     page 1 mostly empty. */
-  .body {
-    display: table;
-    width: 100%;
-  }
+  /* Plain block flow, NOT a two-column table. The contents list used to be a
+     200px table-cell beside the body, but a table cell keeps reserving its
+     column on every page the table spans — so every page after the first
+     showed an empty grey gutter down the left with the text pushed right.
+     Rendering the contents as a self-contained box that appears once, with
+     the sections flowing full width beneath it, removes the gutter entirely.
+
+     No min-height either: a tall fixed minimum could not fit in the space
+     left under the cover, so WeasyPrint moved the whole body to page 2. */
+  .body { }
   .sidebar {
-    display: table-cell;
-    width: 200px;
-    vertical-align: top;
     background: #f8f8f8;
-    border-right: 1px solid #e8e8e8;
-    padding: 36px 24px;
+    border: 1px solid #e8e8e8;
+    border-left: 3px solid #c8972a;
+    padding: 20px 24px 14px;
+    margin: 32px 44px 8px;
+    page-break-inside: avoid;
   }
   .sidebar-title {
     font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.16em;
-    color: #bbb;
-    margin-bottom: 20px;
+    color: #999;
+    margin-bottom: 12px;
   }
+  /* Laid out as inline-block columns rather than CSS multi-column: WeasyPrint's
+     multi-column support is partial, inline-block is not. */
   .sidebar-nav { list-style: none; }
   .sidebar-nav li {
-    font-size: 12px;
+    display: inline-block;
+    width: 32%;
+    vertical-align: top;
+    font-size: 11.5px;
     color: #555;
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: default;
-    margin-bottom: 2px;
-    line-height: 1.4;
+    padding: 5px 8px 5px 0;
+    margin-bottom: 0;
+    line-height: 1.35;
   }
+  /* No "active" highlight in a print document — every section is present, so
+     singling one out only made the contents box look like a web nav. */
   .sidebar-nav li.active {
-    background: #fff;
-    border: 1px solid #e0e0e0;
     color: #0f2744;
     font-weight: 600;
-    border-left: 3px solid #c8972a;
-    padding-left: 10px;
   }
   .sidebar-nav li .num {
     display: block;
@@ -154,7 +158,8 @@
     margin-bottom: 2px;
   }
 
-  .main { display: table-cell; vertical-align: top; padding: 40px 44px; }
+  /* Full-width block so continuation pages use the whole page width. */
+  .main { padding: 24px 44px 40px; }
 
   .section { margin-bottom: 36px; }
   .section-header {

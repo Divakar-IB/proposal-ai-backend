@@ -4,6 +4,7 @@ from docx.text.paragraph import Paragraph
 
 from extraction.base import BaseExtractor, ExtractedDocument, ExtractedPage, ExtractionMethod
 from extraction.heading_detector import LineFeatures, classify_heading
+from extraction.table_markdown import rows_to_markdown
 
 HEADING_STYLE_TO_MARKDOWN = {
     "Heading 1": "#",
@@ -32,7 +33,6 @@ class DocxExtractor(BaseExtractor):
                 markdown_parts.append(rendered)
 
         markdown = "\n\n".join(markdown_parts).strip()
-        print(markdown)
         page = ExtractedPage(page_number=1, markdown=markdown, extraction_method=ExtractionMethod.DOCX)
         return ExtractedDocument(markdown=markdown, source_filename=source_filename, pages=[page])
 
@@ -120,19 +120,27 @@ class DocxExtractor(BaseExtractor):
         ))
 
     def _render_table(self, table: Table) -> str:
-        rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
-        rows = [row for row in rows if any(cell for cell in row)]
-        if not rows:
-            return ""
+        rows = [self._row_values(row) for row in table.rows]
+        return rows_to_markdown(rows) or ""
 
-        header, *body_rows = rows
-        lines = [
-            "| " + " | ".join(header) + " |",
-            "| " + " | ".join("---" for _ in header) + " |",
-        ]
-        lines.extend("| " + " | ".join(row) + " |" for row in body_rows)
-        return "\n".join(lines)
+    @staticmethod
+    def _row_values(row) -> list[str]:
+        """Cell texts for one row, with horizontally-merged cells collapsed.
 
-if __name__ == "__main__":
-    obj1 = DocxExtractor()
-    obj1.extract("/home/ib-40/Downloads/RFP_Inmar.docx", "knowledge document.docx")
+        python-docx exposes `row.cells` per *grid* column, so a cell spanning
+        three columns comes back three times — emitting it verbatim would
+        repeat "Total" across three Markdown columns and shift every value
+        after it out of alignment. Identity of the underlying `<w:tc>` element
+        (not the text) is used to spot the repeats, so two distinct cells that
+        happen to hold the same string are still kept separate.
+        """
+
+        values: list[str] = []
+        seen_elements: set[int] = set()
+        for cell in row.cells:
+            element_id = id(cell._tc)
+            if element_id in seen_elements:
+                continue
+            seen_elements.add(element_id)
+            values.append(cell.text)
+        return values

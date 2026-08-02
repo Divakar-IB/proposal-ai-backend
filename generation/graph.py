@@ -1,5 +1,6 @@
+import asyncio
 import json
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Callable, Iterator, Optional
 
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
@@ -174,12 +175,56 @@ async def retrieve(state: ProposalGenerationState) -> dict[str, Any]:
     return {"current_section": section_state}
 
 
+async def _aiter_blocking(make_iterator: Callable[[], Iterator[str]]) -> AsyncIterator[str]:
+    """Bridges a blocking synchronous generator into an async iterator.
+
+    Required for live token streaming. `draft_one_section_stream` is a sync
+    generator that blocks on socket reads from the LLM; iterating it directly
+    inside an async node never yields to the event loop, so LangGraph's stream
+    consumer cannot drain the writer queue and every token of a section is
+    flushed in one burst when the node finally returns — the client sees a
+    lump per section instead of text appearing as it is generated.
+
+    Running the producer in a worker thread and awaiting each item hands
+    control back to the event loop per token, so the SSE line goes out
+    immediately. It also keeps the loop free while the LLM socket blocks,
+    instead of stalling every other request in the process.
+    """
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    done = object()
+
+    def produce() -> None:
+        try:
+            for item in make_iterator():
+                loop.call_soon_threadsafe(queue.put_nowait, item)
+        except BaseException as error:  # re-raised on the consumer side below
+            loop.call_soon_threadsafe(queue.put_nowait, error)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, done)
+
+    producer = loop.run_in_executor(None, produce)
+    try:
+        while True:
+            item = await queue.get()
+            if item is done:
+                break
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        await producer
+
+
 async def draft(state: ProposalGenerationState) -> dict[str, Any]:
     section_state = state["current_section"]
     writer = get_stream_writer()
 
     content_parts: list[str] = []
-    for delta in draft_one_section_stream(section_state, state["requirements_json"]):
+    async for delta in _aiter_blocking(
+        lambda: draft_one_section_stream(section_state, state["requirements_json"])
+    ):
         content_parts.append(delta)
         writer({"event": "section_chunk", "data": {"content": delta}})
 

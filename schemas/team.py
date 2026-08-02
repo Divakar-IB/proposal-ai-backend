@@ -46,3 +46,16 @@ class UpdateTeamMemberRoleResponse(BaseModel):
     id: int
     email: EmailStr
     role: UserRole
+
+
+class UpdateTeamMemberStatusRequest(BaseModel):
+    is_active: bool
+
+
+class UpdateTeamMemberStatusResponse(BaseModel):
+    message: str
+    id: int
+    email: EmailStr
+    # "active" / "inactive" — same vocabulary as TeamMemberResponse.status so
+    # the frontend can reuse one mapping.
+    status: str

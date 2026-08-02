@@ -2,7 +2,7 @@ import os
 import json
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings
-from typing import List, Any
+from typing import Any, List, Literal, Optional
 
 from dotenv import load_dotenv
 
@@ -71,6 +71,27 @@ class SMTPConfig(BaseModel):
     password: str
     from_email: str
     use_tls: bool = True
+
+    # How mail actually leaves the process.
+    #
+    #   "smtp"  – classic smtplib over port 587. Works locally, but many hosts
+    #             (Render among them) block outbound SMTP entirely; there the
+    #             connect fails immediately with
+    #             "OSError: [Errno 101] Network is unreachable".
+    #   others  – the provider's HTTPS REST API, which goes out over 443 and is
+    #             therefore not blocked. Set `api_key` when using one of these.
+    #
+    # `from_email` is reused as the sender for every provider. For a real
+    # provider the sending domain usually has to be verified with them first.
+    provider: Literal["smtp", "resend", "brevo", "sendgrid"] = "smtp"
+    api_key: Optional[str] = None
+    from_name: Optional[str] = None
+
+    @model_validator(mode="after")
+    def check_api_key_present(self) -> "SMTPConfig":
+        if self.provider != "smtp" and not self.api_key:
+            raise ValueError(f"smtp.api_key is required when smtp.provider is '{self.provider}'")
+        return self
 
 class AppConfig(BaseSettings):
     database: DatabaseConfig

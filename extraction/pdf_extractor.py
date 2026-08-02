@@ -6,6 +6,7 @@ import fitz  # PyMuPDF
 from extraction.base import BaseExtractor, ExtractedDocument, ExtractedPage, ExtractionMethod
 from extraction.heading_detector import LineFeatures, classify_heading
 from extraction.ocr_engine import StructuredOCREngine
+from extraction.table_markdown import rows_to_markdown
 from utilities.logger import get_logger
 
 logger = get_logger(__name__)
@@ -103,7 +104,27 @@ class PDFExtractor(BaseExtractor):
         return max(size_counts, key=lambda size: size_counts[size])
 
     def _extract_page_text(self, page: "fitz.Page", body_size: float) -> str:
-        lines_markdown: list[str] = []
+        """Renders a text-layer page to Markdown, emitting any detected tables
+        as Markdown tables rather than as loose lines.
+
+        Without the table pass a table's cells arrive as a flat stream of text
+        lines and the row/column association is lost entirely — which then gets
+        embedded and pasted into drafting prompts as meaningless runs of
+        numbers. Table regions are therefore rendered separately and their
+        lines excluded from the prose pass so nothing is duplicated. Items are
+        re-sorted by vertical position to preserve reading order.
+        """
+
+        tables = self._find_tables(page)
+
+        # (sort_key, markdown) so tables and prose can be interleaved in
+        # reading order regardless of which pass produced them.
+        items: list[tuple[float, float, str]] = []
+        table_rects: list["fitz.Rect"] = []
+
+        for rect, markdown in tables:
+            table_rects.append(rect)
+            items.append((rect.y0, rect.x0, markdown))
 
         for block in page.get_text("dict").get("blocks", []):
             if block.get("type") != 0:  # skip image blocks; handled via _is_scanned_page routing
@@ -118,9 +139,55 @@ class PDFExtractor(BaseExtractor):
                 if not text:
                     continue
 
-                lines_markdown.append(self._render_line(text, spans, body_size))
+                line_rect = fitz.Rect(line["bbox"])
+                if any(self._mostly_inside(line_rect, rect) for rect in table_rects):
+                    continue  # already covered by the rendered table
 
-        return "\n".join(lines_markdown)
+                items.append((line_rect.y0, line_rect.x0, self._render_line(text, spans, body_size)))
+
+        items.sort(key=lambda item: (round(item[0], 1), item[1]))
+        return "\n".join(markdown for _, _, markdown in items)
+
+    def _find_tables(self, page: "fitz.Page") -> list[tuple["fitz.Rect", str]]:
+        """Detected tables as (bounding box, Markdown). Table detection is
+        best-effort — a PDF with no ruling lines may yield nothing, in which
+        case the page simply falls back to the prose-only behaviour."""
+
+        try:
+            finder = page.find_tables()
+        except Exception:
+            logger.exception("table detection failed | page=%s", page.number + 1)
+            return []
+
+        found: list[tuple["fitz.Rect", str]] = []
+        for table in getattr(finder, "tables", []):
+            try:
+                # min_rows=2: a single detected row is nearly always a false
+                # positive (a boxed callout), and rendering it as a table would
+                # strip it of its prose formatting for no gain.
+                markdown = rows_to_markdown(table.extract(), min_rows=2)
+                if markdown:
+                    found.append((fitz.Rect(table.bbox), markdown))
+            except Exception:
+                logger.exception("table render failed | page=%s", page.number + 1)
+
+        if found:
+            logger.info("tables extracted | page=%s count=%s", page.number + 1, len(found))
+        return found
+
+    @staticmethod
+    def _mostly_inside(line_rect: "fitz.Rect", table_rect: "fitz.Rect", threshold: float = 0.5) -> bool:
+        """True when most of a text line sits inside a table's bounds. Uses an
+        overlap ratio rather than strict containment because a detected table
+        box is often a pixel or two tighter than the glyphs it holds."""
+
+        overlap = line_rect & table_rect
+        if overlap.is_empty:
+            return False
+        line_area = line_rect.get_area()
+        if line_area <= 0:
+            return True
+        return overlap.get_area() / line_area >= threshold
 
     def _render_line(self, text: str, spans: list[dict], body_size: float) -> str:
         total_chars = sum(len(span.get("text", "")) for span in spans)
@@ -153,10 +220,3 @@ class PDFExtractor(BaseExtractor):
             return markdown
         finally:
             Path(tmp_path).unlink(missing_ok=True)
-
-if __name__ == "__main__":
-    ob1 = PDFExtractor()
-    ob1.extract(
-        file_path="/home/ib-40/Downloads/AI_Trade_Intelligence_Portal_RFP_2026.pdf",
-        source_filename="sample.pdf",
-    )

@@ -112,10 +112,10 @@ EXPORT_TEMPLATES = [
         "description": "C-suite summary layout",
         "preview_key": "proposal_templates/executive_preview",
     },
-    {
-        "id": 5,
-        "name": "Modern",
-        "description": "Clean bold headings",
-        "preview_key": "proposal_templates/modern_preview",
-    },
+    # {
+    #     "id": 5,
+    #     "name": "Modern",
+    #     "description": "Clean bold headings",
+    #     "preview_key": "proposal_templates/modern_preview",
+    # },
 ]

@@ -22,6 +22,7 @@ from schemas.proposal import (
     ExportTemplateResponse,
     ProposalDetailResponse,
     ProposalExportResponse,
+    FileSummary,
     GenerationConfigStep,
     GenerationStep,
     ProposalDetailsStep,
@@ -136,6 +137,45 @@ async def _get_proposal_or_404(db: AsyncSession, proposal_id: int) -> Proposal:
 
 
 
+def _combined_summary(documents: list) -> str:
+    """One summary covering every parsed file. A single file keeps its
+    summary verbatim (no heading added, so the single-upload flow renders
+    exactly as before); several are concatenated under per-file headings."""
+
+    if len(documents) == 1:
+        return documents[0].summary
+    return "\n\n".join(f"### {document.file_name}\n\n{document.summary}" for document in documents)
+
+
+def _merge_knowledge_matches(documents: list) -> list[dict]:
+    """Union of every file's knowledge matches, keeping the highest
+    match_percent per knowledge document so the same source isn't listed
+    once per uploaded file, and ordered strongest-first."""
+
+    best: dict[int, dict] = {}
+    for document in documents:
+        for match in document.knowledge_matches or []:
+            document_id = match.get("document_id")
+            current = best.get(document_id)
+            if current is None or match.get("match_percent", 0) > current.get("match_percent", 0):
+                best[document_id] = match
+    return sorted(best.values(), key=lambda match: match.get("match_percent", 0), reverse=True)
+
+
+def _merge_capability_tags(documents: list) -> list[dict]:
+    """Union of every file's capability tags, keeping the highest confidence
+    per tag name, ordered most-confident-first."""
+
+    best: dict[str, dict] = {}
+    for document in documents:
+        for tag in document.capability_tags or []:
+            name = tag.get("name")
+            current = best.get(name)
+            if current is None or tag.get("confidence", 0) > current.get("confidence", 0):
+                best[name] = tag
+    return sorted(best.values(), key=lambda tag: tag.get("confidence", 0), reverse=True)
+
+
 @router.get("/proposal-state", response_model=ProposalStateResponse)
 async def get_proposal_state(
     proposal_id: int,
@@ -149,21 +189,38 @@ async def get_proposal_state(
 
     proposal = await _get_proposal_or_404(db, proposal_id)
     documents = await get_requirement_documents_by_proposal_id(db, proposal_id)
-    latest_document = documents[-1] if documents else None
 
+    file_responses = [_requirement_document_response(document, proposal) for document in documents]
     proposal_details = ProposalDetailsStep(
         proposal_name=proposal.title,
         client_name=proposal.client_name,
         additional_context=proposal.additional_context,
-        files=[_requirement_document_response(document, proposal) for document in documents],
+        files=file_responses,
     )
 
+    # Aggregated across every uploaded file, not just the most recent one. A
+    # proposal can now carry several requirement documents (see POST
+    # /proposals/requirement-documents), and reading only the latest hid the
+    # summary, matches and tags of every earlier upload. The per-file
+    # breakdown is still available on proposal_details.files.
     summary = None
-    if latest_document is not None and latest_document.summary:
+    parsed_documents = [document for document in documents if document.summary]
+    if parsed_documents:
         summary = SummaryStep(
-            summary=latest_document.summary,
-            knowledge_matches=latest_document.knowledge_matches or [],
-            capability_tags=latest_document.capability_tags or [],
+            summary=_combined_summary(parsed_documents),
+            knowledge_matches=_merge_knowledge_matches(documents),
+            capability_tags=_merge_capability_tags(documents),
+            files=[
+                FileSummary(
+                    document_id=document.id,
+                    file_name=document.file_name,
+                    status=document.status,
+                    summary=document.summary,
+                    knowledge_matches=document.knowledge_matches or [],
+                    capability_tags=document.capability_tags or [],
+                )
+                for document in documents
+            ],
         )
 
     generation_config = None
@@ -175,7 +232,7 @@ async def get_proposal_state(
         )
         generation = GenerationStep(status=_wizard_generation_status(proposal.status))
 
-    if latest_document is None:
+    if not documents:
         current_step = "proposal_details"
     elif summary is None:
         current_step = "summary"

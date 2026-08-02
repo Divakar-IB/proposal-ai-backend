@@ -1,5 +1,136 @@
 # Proposal AI Backend
 
+## API Changes — 2026-08-01 → 2026-08-02 (read this if you work on the frontend)
+
+Covers commits `409c80d`, `b768b53`, `0bad196`. **6 endpoints were removed and several
+response payloads lost fields.** Anything below marked **BREAKING** needs a frontend change.
+
+### 1. Endpoints removed — BREAKING
+
+These now return **404 Not Found** (or **405** on a wrong method). Remove any client code calling them.
+
+| Method | Path | Why / what to use instead |
+|---|---|---|
+| `POST` | `/auth/refresh` | No replacement. The session now ends when the access token expires — the user must log in again. `/auth/login` still returns a `refresh_token`, but **there is nothing to redeem it against**; ignore that field. |
+| `PATCH` | `/proposals/{proposal_id}/sections` | Duplicate. Use `PATCH /proposal-sections?proposal_id={id}`. |
+| `GET` | `/document/{document_id}/download` | Use the `url` field on `DocumentResponse` — a presigned S3 URL (1-hour expiry) you can link to or fetch directly. |
+| `POST` | `/document/{document_id}/process` | Re-processing now happens automatically when a new file is uploaded to an existing document via `POST /document/upload` with `document_id`. |
+| `POST` | `/proposals/sections/{section_id}/regenerate` | Not currently exposed. |
+| `POST` | `/proposals/sections/{section_id}/approve` | Not currently exposed. Use `PATCH /proposals/{id}/status`. |
+
+### 2. Response payloads — fields removed — BREAKING
+
+The underlying DB columns were dropped because nothing ever wrote them; every one of these
+fields was always `null` / `false`. If the UI reads them, it must stop.
+
+**`ProposalResponse`** — removed `is_approved`, `approved_markdown`, `proposal_json`, `docx_path`, `pdf_path`
+
+```json
+{
+  "id": 41,
+  "requirement_document_ids": [12],
+  "user_id": 3,
+  "title": "Trade Intelligence & Analytics (TIA) Portal",
+  "client_name": "Department of Commerce, Government of India",
+  "additional_context": null,
+  "generation_mode": "knowledge_augmented",
+  "page_count": 5,
+  "status": "review",
+  "markdown_path": "output/proposals/3/41/proposal.md",
+  "error_message": null,
+  "sections": [],
+  "created_at": "2026-08-02T10:15:00"
+}
+```
+
+**`ProposalSectionResponse`** — removed `confidence_score`, `review_flag`
+
+```json
+{
+  "id": 501,
+  "section_key": "executive-summary",
+  "title": "Executive Summary",
+  "order_index": 0,
+  "content": "InnoBoon Technologies proposes ...",
+  "sources": [
+    { "breadcrumb": "Case Studies > BFSI Migration", "source_filename": "bfsi.pdf", "type": "knowledge_document" }
+  ],
+  "status": "approved"
+}
+```
+
+**Where these two models actually surface:**
+
+| Endpoint | Returns | Affected? |
+|---|---|---|
+| `GET /proposals` | `{ data: ProposalResponse[], total, page, limit }` | **Yes** — both models (sections are nested in each item) |
+| `PATCH /proposals/{id}/status` | `ProposalResponse` | **Yes** — both models |
+| `GET /proposal-sections` | `ProposalDetailResponse` | No — uses a different, unchanged shape |
+| `PATCH /proposal-sections` | `ProposalDetailResponse` | No — uses a different, unchanged shape |
+
+`ProposalDetailResponse` is unchanged and stays `{ id, title, client_name, status, sections: [{ id, title, content, order }] }`.
+
+### 3. `POST /proposals/generate` — minimum 5 pages — BREAKING
+
+`page_count` must now be **≥ 5**. Anything lower is rejected with **422** before generation starts.
+Every proposal section is always generated, and below 5 pages they cannot fit their required
+subsections. Enforce a `min=5` on the input.
+
+```jsonc
+// Request
+{ "proposal_id": 41, "page_count": 5, "generation_mode": "knowledge_augmented" }
+
+// 422 when page_count < 5
+{ "detail": [ { "type": "greater_than_equal", "loc": ["body", "page_count"],
+                "msg": "Input should be greater than or equal to 5" } ] }
+```
+
+Generation now also sizes each section's content to the requested page count, so a 5-page
+request produces a genuinely ~5-page document instead of overrunning.
+
+### 4. `GET /proposals/templates` — template list changed — BREAKING
+
+Now returns **5** templates, and **id 1 was renamed**. Previously id 1 was `"Modern"` but
+exported a different design than its own preview showed — that mismatch is fixed.
+
+| id | name | notes |
+|---|---|---|
+| 1 | **Professional** | **new default.** The only template whose DOCX matches its PDF (same colours/fonts). Was `"Modern"` before. |
+| 2 | Minimal | unchanged |
+| 3 | Corporate | unchanged |
+| 4 | Executive | unchanged |
+| 5 | **Modern** | new id — this is the old id-1 purple design, now actually renderable |
+
+```json
+[{ "id": 1, "name": "Professional", "description": "Formal business proposal — default",
+   "preview_url": "https://...s3...?X-Amz-Signature=..." }]
+```
+
+> **If the frontend hardcodes `template_id: 1` expecting "Modern", it now gets "Professional".**
+> `preview_url` for id 1 points at `proposal_templates/professional_preview`, which still has
+> to be uploaded to S3 — expect a broken thumbnail for that one until it is.
+
+### 5. Export — `template_id` now optional
+
+`template_id` defaults to `1` (Professional) on both `POST /proposals/{id}/export` and
+`POST /proposals/{id}/export/email`. Send it explicitly to pick another template.
+
+Only the Professional template is style-matched between PDF and DOCX (headings `#0d2b5e`,
+sub-headings `#1a5fb4`, everything else black). The other four still export DOCX with Word's
+default styling, so their DOCX will not look like their PDF. Its cover page carries:
+organization name, submitted-to (client), contact person, contact email, date, version (`v1`),
+and reference — contact details come from `GET /organization-settings`.
+
+### 6. Additive — no action needed
+
+| Where | New field |
+|---|---|
+| `OrganizationSettingsResponse` / update request | `proposal_naming_template: string \| null` |
+| `RequirementDocumentResponse` | `additional_documents: RequirementDocumentResponse[]` |
+| `GET /document/list` | query param `include_generated: bool = false` — set `true` to also list knowledge documents auto-created from approved proposals (hidden by default so the manual-upload list stays clean) |
+
+---
+
 ## Overview
 
 Proposal AI is a FastAPI backend that turns an RFP/requirement document into a draft proposal. Users upload knowledge-base documents (past case studies, capability statements, pricing sheets, etc.) and requirement documents (RFPs); the system extracts and chunks the former into a Pinecone vector index, parses the latter into structured requirements via an LLM, and then runs a LangGraph pipeline that retrieves relevant knowledge chunks per proposal section, drafts each section, quality-checks it, and revises until approved — streaming progress back to the client over Server-Sent Events.

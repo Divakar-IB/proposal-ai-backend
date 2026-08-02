@@ -1,87 +1,39 @@
 import asyncio
-import smtplib
-import socket
 import time
-from email.message import EmailMessage
-from typing import NamedTuple, Optional
+from typing import Optional
 
 from config import config
+from utilities.email_transport import EmailAttachment, get_transport
 from utilities.logger import get_logger
 
 logger = get_logger(__name__)
 
-
-class EmailAttachment(NamedTuple):
-    content: bytes
-    filename: str
-    content_type: str
-
-
-# TEMPORARY: stage-by-stage timing instrumentation to diagnose why sending is
-# slow on Render but not locally. Remove once the bottleneck is confirmed.
-def _send_email_sync(
-    to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
-) -> None:
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = config.smtp.from_email
-    message["To"] = to_email
-    message.set_content(body)
-
-    for attachment in attachments or []:
-        maintype, _, subtype = attachment.content_type.partition("/")
-        message.add_attachment(
-            attachment.content,
-            maintype=maintype or "application",
-            subtype=subtype or "octet-stream",
-            filename=attachment.filename,
-        )
-
-    timings: dict[str, float] = {}
-    overall_start = time.perf_counter()
-
-    stage_start = time.perf_counter()
-    socket.getaddrinfo(config.smtp.host, config.smtp.port)
-    timings["dns_resolve"] = time.perf_counter() - stage_start
-
-    stage_start = time.perf_counter()
-    server = smtplib.SMTP(config.smtp.host, config.smtp.port, timeout=20)
-    timings["tcp_connect"] = time.perf_counter() - stage_start
-
-    try:
-        if config.smtp.use_tls:
-            stage_start = time.perf_counter()
-            server.starttls()
-            timings["starttls"] = time.perf_counter() - stage_start
-
-        stage_start = time.perf_counter()
-        server.login(config.smtp.username, config.smtp.password)
-        timings["login"] = time.perf_counter() - stage_start
-
-        stage_start = time.perf_counter()
-        server.send_message(message)
-        timings["send_message"] = time.perf_counter() - stage_start
-    finally:
-        stage_start = time.perf_counter()
-        server.quit()
-        timings["quit"] = time.perf_counter() - stage_start
-
-    timings["total"] = time.perf_counter() - overall_start
-    logger.info(
-        "SMTP send timing to=%s | %s",
-        to_email,
-        " ".join(f"{stage}={duration:.3f}s" for stage, duration in timings.items()),
-    )
+# Re-exported so callers keep importing EmailAttachment from here.
+__all__ = [
+    "EmailAttachment",
+    "send_email",
+    "send_otp_email",
+    "send_proposal_export_email",
+    "send_team_invite_email",
+]
 
 
 async def send_email(
     to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
 ) -> None:
-    dispatch_start = time.perf_counter()
-    await asyncio.to_thread(_send_email_sync, to_email, subject, body, attachments)
+    """Sends one email via whichever transport `smtp.provider` selects (see
+    utilities/email_transport.py).
+
+    Both transports are blocking network I/O, so they run in a worker thread
+    to keep the event loop free.
+    """
+
+    transport = get_transport()
+    started = time.perf_counter()
+    await asyncio.to_thread(transport, to_email, subject, body, attachments)
     logger.info(
-        "send_email total (including thread dispatch) to=%s | %.3fs",
-        to_email, time.perf_counter() - dispatch_start,
+        "email sent | provider=%s to=%s subject=%r %.2fs",
+        config.smtp.provider, to_email, subject, time.perf_counter() - started,
     )
 
 

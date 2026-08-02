@@ -30,6 +30,50 @@ async def get_category_by_name(db: AsyncSession, name: str) -> Category | None:
     return result.scalars().first()
 
 
+async def get_category_by_name_including_deleted(db: AsyncSession, name: str) -> Category | None:
+    """Ignores is_active on purpose. Category.name carries a DB-level UNIQUE
+    constraint, so a soft-deleted row keeps its name reserved — callers that
+    are about to INSERT must look for the hidden row first and revive it
+    instead, or the insert fails with an IntegrityError."""
+
+    result = await db.execute(select(Category).filter(Category.name == name))
+    return result.scalars().first()
+
+
+async def get_category_by_id(db: AsyncSession, category_id: int) -> Category | None:
+    result = await db.execute(
+        select(Category).filter(Category.id == category_id, Category.is_active.is_(True))
+    )
+    return result.scalars().first()
+
+
+async def count_active_documents_in_category(db: AsyncSession, category_id: int) -> int:
+    result = await db.execute(
+        select(func.count(KnowledgeDocument.id)).filter(
+            KnowledgeDocument.category_id == category_id,
+            KnowledgeDocument.is_active.is_(True),
+        )
+    )
+    return int(result.scalar_one())
+
+
+async def deactivate_category(db: AsyncSession, category: Category) -> None:
+    category.is_active = False
+    await db.commit()
+
+
+async def reactivate_category(db: AsyncSession, category: Category, description: Optional[str] = None) -> Category:
+    """Brings a soft-deleted category back rather than inserting a second row
+    with the same (UNIQUE) name."""
+
+    category.is_active = True
+    if description is not None:
+        category.description = description
+    await db.commit()
+    await db.refresh(category)
+    return category
+
+
 async def create_category(db: AsyncSession, category: Category) -> Category:
     db.add(category)
     await db.commit()
@@ -40,11 +84,20 @@ async def create_category(db: AsyncSession, category: Category) -> Category:
 async def get_or_create_category(db: AsyncSession, name: str) -> Category:
     """Used to lazily provision system categories (e.g. "Generated
     Proposals" for proposal-derived knowledge documents) without requiring
-    an admin to create them by hand first."""
+    an admin to create them by hand first.
+
+    Revives a soft-deleted category of the same name instead of inserting a
+    duplicate — deleting "Generated Proposals" would otherwise make every
+    later proposal approval fail on the UNIQUE(name) constraint."""
 
     category = await get_category_by_name(db, name)
     if category is not None:
         return category
+
+    deleted = await get_category_by_name_including_deleted(db, name)
+    if deleted is not None:
+        return await reactivate_category(db, deleted)
+
     return await create_category(db, Category(name=name))
 
 

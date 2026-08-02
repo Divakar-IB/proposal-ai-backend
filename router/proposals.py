@@ -157,8 +157,8 @@ async def _get_proposal_or_404(db: AsyncSession, proposal_id: int) -> Proposal:
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_requirement_document(
-    file: Optional[UploadFile] = File(None),
-    files: Optional[List[UploadFile]] = File(None),
+
+    files: List[UploadFile] = File(default=[]),
     proposal_id: Optional[int] = Form(None),
     proposal_name: Optional[str] = Form(None),
     client_name: str = Form(...),
@@ -175,9 +175,7 @@ async def upload_requirement_document(
     concurrent use, and the LLM calls inside it are blocking anyway so
     concurrency would buy nothing.
 
-    `file` (singular) is the original field — still accepted as-is for
-    existing callers. `files` (plural) additionally accepts more than one
-    upload in the same call; both can be combined. Pass `proposal_id` to
+    Send one or more uploads under the repeated `files` field. Pass `proposal_id` to
     attach new documents to an already-created proposal instead of starting
     a new one (proposal_name/client_name/additional_context are then only
     used as extraction context for the new files, not applied to the
@@ -187,13 +185,14 @@ async def upload_requirement_document(
 
     user_id = current_user["user_id"]
 
-    uploads: list[UploadFile] = list(files) if files else []
-    if file is not None:
-        uploads.insert(0, file)
+    # Swagger (and a browser form with an untouched file input) still sends an
+    # empty part, which would otherwise be uploaded as a 0-byte object under a
+    # blank filename.
+    uploads = [upload for upload in (files or []) if upload and (upload.filename or "").strip()]
     if not uploads:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="At least one file is required (file or files).",
+            detail="At least one file is required.",
         )
 
     if proposal_id is not None:

@@ -37,6 +37,9 @@ from schemas.auth import (
 )
 from utilities.email_service import send_otp_email
 from utilities.generic import assign_role, generate_otp
+from utilities.logger import get_logger
+
+logger = get_logger(__name__)
 
 OTP_EXPIRE_MINUTES = 10
 
@@ -124,7 +127,15 @@ async def forgot_password(
         otp = generate_otp()
         expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=OTP_EXPIRE_MINUTES)
         await set_user_otp(db, user, hash_password(otp), expires_at)
-        await send_otp_email(user.email, otp, OTP_EXPIRE_MINUTES)
+        try:
+            await send_otp_email(user.email, otp, OTP_EXPIRE_MINUTES)
+        except Exception:
+            # Deliberately swallowed. Letting this propagate turned a mail
+            # outage into a 500, which also defeated the generic response
+            # above: a registered address 500'd while an unknown one returned
+            # 200, so the endpoint leaked which emails exist. The OTP is
+            # already stored, so a resend once mail is healthy still works.
+            logger.exception("OTP email could not be sent | email=%s", user.email)
 
     return ForgotPasswordResponse(message=GENERIC_FORGOT_PASSWORD_MESSAGE)
 

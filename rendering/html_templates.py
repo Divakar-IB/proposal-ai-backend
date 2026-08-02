@@ -19,7 +19,10 @@ HTML_TEMPLATES: dict[int, str] = {
     2: "minimal.html",             # Minimal
     3: "corporate_preview.html",   # Corporate
     4: "executive_preview.html",   # Executive
-    5: "modern_preview.html",      # Modern
+    # 5: "modern_preview.html",    # Modern — disabled alongside its entry in
+    #                                constants.EXPORT_TEMPLATES. Re-enable both
+    #                                together, or /proposals/templates and the
+    #                                renderer disagree about which ids exist.
 }
 
 
