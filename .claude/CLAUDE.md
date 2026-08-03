@@ -38,7 +38,8 @@ requirements_parsing/  LLM-driven structured requirement extraction + summary
 generation/        LangGraph proposal-generation pipeline: graph.py (nodes/graph), state.py, sections.py,
                     nodes.py (retrieve/draft/quality-check helpers), prompts.py (mostly dead, see below)
 services/          Cross-cutting business logic (proposal_review_service, proposal_export_service,
-                    proposal_knowledge_service, citation_service, proposal_naming_service)
+                    proposal_knowledge_service, citation_service, proposal_naming_service,
+                    proposal_wizard_service)
 tasks/             Background task entry points (document/requirement processing)
 rendering/         Jinja2 templates + PDF/DOCX renderers for export
 utilities/         S3 service, email service, logger, pagination, helpers
@@ -82,7 +83,8 @@ before editing in its area** rather than guessing conventions from scratch:
 - **A database change is never "just the model"** — every model change needs a matching Alembic
   migration in the same pass.
 - **Don't create a second parallel router for the same resource.** This repo has had drift before
-  (`router/proposal_temp.py` vs `router/proposals.py`).
+  (`router/proposal_temp.py` vs `router/proposals.py`) — the temp router has since been folded
+  into `router/proposals.py`; don't reintroduce the pattern.
 - Prefer HTTPException codes that match the actual failure: `404` not found, `409` invalid state
   transition, `422` background pipeline landed in a failure state, `502` upstream dependency
   failure (S3/SMTP/LLM) — never default everything to 400/500, and never swallow an exception
@@ -96,7 +98,7 @@ they're not missed even without invoking the skill)
 - **Arq/Redis queue is fully wired but inert** — `get_arq_pool()` is a no-op. Everything actually
   runs via `BackgroundTasks` or synchronously in the request.
 - **`generation/nodes.py::run_quality_check`/`decide_section_status`** are implemented but not
-  called by the live `/proposals/generate` stream — every section is force-approved. The
+  called by the live `/proposal/generate` stream — every section is force-approved. The
   quality-check retry loop is an intentional future follow-up, not currently active.
 - **`Proposal.proposal_json`, `approved_markdown`, `is_approved`, `pdf_path`** always empty — no
   live code path writes them.
@@ -120,6 +122,17 @@ alembic revision --autogenerate -m "message"        # create a migration
 alembic downgrade -1                                # roll back one migration
 pytest                                              # run tests
 ```
+
+## Tests
+
+`pytest` runs the API suite against the real app on an in-memory SQLite stand-in for
+Postgres (`test/conftest.py`). Read **`TESTING.md`** before adding or changing tests —
+it covers the fixture set, why the Postgres-only `JSONB`/`ARRAY` columns need
+`with_variant`, which outbound calls are stubbed and *where* they must be patched, and
+the three `xfail(strict=True)` markers that pin known app bugs. Two rules that bite:
+import shared helpers as `from helpers import ...` (never `from test.helpers import ...`
+— the root-level `test.py` shadows the package), and patch stubs on the module that
+*uses* a function, not the one that defines it.
 
 ## Windows dev note
 

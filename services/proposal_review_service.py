@@ -64,16 +64,6 @@ async def delete_proposal(db: AsyncSession, proposal_id: int) -> None:
     logger.info("proposal deleted | proposal_id=%s", proposal_id)
 
 
-async def get_proposal_stats(db: AsyncSession) -> dict:
-    """Overall proposal count plus a per-status breakdown for the dashboard —
-    every ProposalStatus value is always present (0 if there are none yet),
-    so the frontend doesn't need to fill in gaps itself."""
-
-    counts = await get_proposal_status_counts(db)
-    by_status = {proposal_status: counts.get(proposal_status, 0) for proposal_status in ProposalStatus}
-    return {"total": sum(by_status.values()), "by_status": by_status}
-
-
 async def list_proposals(
     db: AsyncSession,
     *,

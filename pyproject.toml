@@ -37,3 +37,26 @@ dependencies = [
     "uvicorn==0.49.0",
     "weasyprint==63.1",
 ]
+
+[dependency-groups]
+dev = [
+    "aiosqlite==0.21.0",
+    "httpx==0.28.1",
+    "pytest==8.4.2",
+    "pytest-asyncio==1.3.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+# The tests import app modules (main, router.*, database.*) by their top-level
+# names, so the repo root has to be importable. pytest only puts the *test*
+# directory on sys.path by default.
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q --strict-markers"
+filterwarnings = [
+    # SQLAlchemy/passlib/paddle pull in a lot of third-party deprecation noise
+    # that has nothing to do with this codebase.
+    "ignore::DeprecationWarning",
+]

@@ -1,0 +1,82 @@
+# Proposal AI Backend — base compose file.
+#
+#   docker compose up --build                      # API only (uses your remote DB)
+#   docker compose --profile localdb up --build    # API + a local Postgres
+#
+# Configuration: config.py requires a single CONFIG env var holding a JSON blob.
+# Because that JSON is multi-line in .env, this file *mounts* .env into the
+# container and lets python-dotenv parse it, rather than using compose's
+# `env_file:` (whose multi-line handling varies by compose version).
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: proposal-ai-backend:latest
+    container_name: proposal-ai-api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      PORT: "8000"
+      WORKERS: "${WORKERS:-1}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      # main.py's lifespan already does Base.metadata.create_all, so migrations
+      # are opt-in. Set to 1 once you want alembic to be the source of truth.
+      RUN_MIGRATIONS: "${RUN_MIGRATIONS:-0}"
+    volumes:
+      # Secrets stay on the host; never copied into an image layer.
+      - ./.env:/app/.env:ro
+      # PaddleOCR/PPStructureV3 downloads ~1GB of models on first OCR call.
+      # Persisting the cache keeps container restarts fast.
+      - paddlex-cache:/home/app/.paddlex
+    extra_hosts:
+      # Lets CONFIG point at a Postgres running on the host as
+      # "host.docker.internal" on Linux too (already works on Docker Desktop).
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  # Optional local Postgres. Enable with `--profile localdb`, and point
+  # CONFIG.database at host "db", port 5432 with the credentials below.
+  db:
+    image: postgres:16-alpine
+    profiles: ["localdb"]
+    container_name: proposal-ai-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-proposal}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-proposal}"
+      POSTGRES_DB: "${POSTGRES_DB:-proposal_ai}"
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-proposal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis is only here for completeness: the Arq queue in tasks/ is inert
+  # (get_arq_pool() is a no-op) and nothing in the live code path talks to it.
+  # Enable with `--profile queue` if/when Arq is actually wired up.
+  redis:
+    image: redis:7-alpine
+    profiles: ["queue"]
+    container_name: proposal-ai-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  paddlex-cache:
+  pgdata:
+  redisdata:

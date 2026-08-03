@@ -4,7 +4,7 @@ Scope: the client/RFP document pipeline — distinct from `knowledge_documents` 
 
 ## 1. Entry point — upload/create
 
-**`POST /proposals/requirement-documents`** — `router/proposals.py:141-202`, mounted under prefix `/proposals`.
+**`POST /proposal/requirement-documents`** — `router/proposals.py:141-202`, mounted under prefix `/proposal`.
 
 - Auth: `Depends(get_current_user)`.
 - Request: multipart form — `file`, `proposal_name`, `client_name`, `additional_context` (optional).
@@ -18,7 +18,7 @@ Flow (`:161-202`):
 5. **Synchronously awaits** `process_requirement_document_pipeline(db, document, additional_context)` — no background queue (see §6). The HTTP response does not return until extraction + all three LLM calls + knowledge-matching complete.
 6. If the pipeline leaves `status == FAILED`, raises HTTP 422. Otherwise returns document + parent-proposal fields flattened together.
 
-A second router, `router/proposal_temp.py` (no prefix, tagged "Proposals", explicitly documented as a demo/wizard-support router), exposes a **read-only** `GET /proposal-state` endpoint that surfaces the same data (via `get_requirement_documents_by_proposal_id`) plus the latest document's `summary`/`knowledge_matches`/`capability_tags` as a `SummaryStep` in a multi-step wizard response. It does not create requirement documents itself.
+The same router also exposes a **read-only** `GET /proposal/{proposal_id}/state` endpoint that surfaces the same data (via `get_requirement_documents_by_proposal_id`) plus every parsed document's `summary`/`knowledge_matches`/`capability_tags`, aggregated by `services/proposal_wizard_service.py` into a `SummaryStep` in a multi-step wizard response. It does not create requirement documents itself. (This endpoint previously lived in a separate unprefixed `router/proposal_temp.py`, now removed.)
 
 No other router exposes requirement-document endpoints.
 
@@ -103,7 +103,7 @@ This is a separate enum namespace from `IngestionStatus` (knowledge documents) a
 ## 5. Downstream use — feeding proposal generation
 
 `generation/requirement_context.py` — two pure functions over `list[RequirementDocument]`:
-- `build_combined_summary(...)` — concatenates each document's `.summary` under a `### {file_name}` heading. **Defined but not called anywhere else** in generation — summaries are surfaced only via `/proposal-state` for the UI, not fed to the LLM drafting step.
+- `build_combined_summary(...)` — concatenates each document's `.summary` under a `### {file_name} (#{id})` heading. **Defined but not called anywhere else** in generation — summaries are surfaced only via `GET /proposal/{proposal_id}/state` for the UI (using the near-duplicate `services/proposal_wizard_service.py::combined_summary`, which omits the heading for a single file), not fed to the LLM drafting step.
 - `build_combined_requirements_json(...)` — builds `{file_name: document.parsed_data, ...}` and `json.dumps(..., indent=2)`. **This is the actual shape passed forward**: one filename-keyed JSON blob, each value the raw `RequirementsSchema` dict.
 
 Consumed in `generate_proposal_stream` (`generation/proposal_generator.py`, see [proposal-generation-flow.md](proposal-generation-flow.md)):

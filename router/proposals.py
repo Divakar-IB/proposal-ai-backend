@@ -24,6 +24,7 @@ from database.crud import (
     delete_proposal,
     get_organization_settings,
     get_proposal_by_id,
+    get_requirement_documents_by_proposal_id,
     update_proposal,
 )
 from database.database import get_db
@@ -37,17 +38,23 @@ from schemas.proposal import (
     ProposalExportEmailResponse,
     ProposalExportRequest,
     ExportTemplateResponse,
+    FileSummary,
+    GenerationConfigStep,
+    GenerationStep,
     ProposalDetailResponse,
-    ProposalExportResponse,
+    ProposalDetailsStep,
     ProposalGenerateRequest,
     ProposalListResponse,
     ProposalResponse,
     ProposalSectionMinimal,
     ProposalSectionResponse,
+    ProposalSectionsReorderRequest,
+    ProposalStateResponse,
     ProposalStatsResponse,
+    SummaryStep,
 )
 from schemas.requirement_document import RequirementDocumentResponse
-from services import proposal_export_service, proposal_review_service
+from services import proposal_export_service, proposal_review_service, proposal_wizard_service
 from tasks.requirement_processing import process_requirement_document_pipeline
 from utilities.logger import get_logger
 from utilities.s3_service import S3PathBuilder, S3Service
@@ -56,7 +63,7 @@ logger = get_logger(__name__)
 s3_service = S3Service()
 
 router = APIRouter(
-    prefix="/proposals",
+    prefix="/proposal",
     tags=["Proposals"],
 )
 
@@ -157,7 +164,6 @@ async def _get_proposal_or_404(db: AsyncSession, proposal_id: int) -> Proposal:
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_requirement_document(
-
     files: List[UploadFile] = File(default=[]),
     proposal_id: Optional[int] = Form(None),
     proposal_name: Optional[str] = Form(None),
@@ -370,7 +376,7 @@ async def delete_proposal_endpoint(
     """Soft-deletes the proposal (is_active=False), the same pattern already
     used for Proposal elsewhere in this module (get_proposal_by_id and
     build_proposals_query both filter on is_active) — so it drops out of
-    GET /proposals immediately. Sections and requirement documents are left
+    GET /proposal immediately. Sections and requirement documents are left
     as-is, matching how deleting a knowledge document doesn't cascade to its
     chunks either."""
 
@@ -457,5 +463,135 @@ async def email_proposal_export(
         format=request.format,
         sent_to=request.email,
     )
+
+
+# ------------------------------------------------------------------
+# Generation-wizard state + section arrangement
+# ------------------------------------------------------------------
+
+@router.get("/{proposal_id}/state", response_model=ProposalStateResponse)
+async def get_proposal_state(
+    proposal_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Returns each wizard step's data keyed by step name (proposal_details,
+    summary, generation_config, generation), so the frontend can resume a
+    proposal wherever the user left off instead of restarting the flow. Steps
+    not yet reached come back as null."""
+
+    proposal = await _get_proposal_or_404(db, proposal_id)
+    documents = await get_requirement_documents_by_proposal_id(db, proposal_id)
+
+    file_responses = [_requirement_document_response(document, proposal) for document in documents]
+    proposal_details = ProposalDetailsStep(
+        proposal_name=proposal.title,
+        client_name=proposal.client_name,
+        additional_context=proposal.additional_context,
+        files=file_responses,
+    )
+
+    # Aggregated across every uploaded file, not just the most recent one. A
+    # proposal can carry several requirement documents (see POST
+    # /proposal/requirement-documents), and reading only the latest hid the
+    # summary, matches and tags of every earlier upload. The per-file
+    # breakdown is still available on proposal_details.files.
+    summary = None
+    parsed_documents = [document for document in documents if document.summary]
+    if parsed_documents:
+        summary = SummaryStep(
+            summary=proposal_wizard_service.combined_summary(parsed_documents),
+            knowledge_matches=proposal_wizard_service.merge_knowledge_matches(documents),
+            capability_tags=proposal_wizard_service.merge_capability_tags(documents),
+            files=[
+                FileSummary(
+                    document_id=document.id,
+                    file_name=document.file_name,
+                    status=document.status,
+                    summary=document.summary,
+                    knowledge_matches=document.knowledge_matches or [],
+                    capability_tags=document.capability_tags or [],
+                )
+                for document in documents
+            ],
+        )
+
+    generation_config = None
+    generation = None
+    if proposal.generation_mode is not None:
+        generation_config = GenerationConfigStep(
+            generation_mode=proposal.generation_mode,
+            page_count=proposal.page_count,
+        )
+        generation = GenerationStep(
+            status=proposal_wizard_service.wizard_generation_status(proposal.status)
+        )
+
+    if not documents:
+        current_step = "proposal_details"
+    elif summary is None:
+        current_step = "summary"
+    elif generation_config is None:
+        current_step = "generation_config"
+    else:
+        current_step = "generation"
+
+    return ProposalStateResponse(
+        proposal_id=proposal.id,
+        current_step=current_step,
+        proposal_details=proposal_details,
+        summary=summary,
+        generation_config=generation_config,
+        generation=generation,
+    )
+
+
+@router.get("/{proposal_id}/sections", response_model=ProposalDetailResponse)
+async def get_proposal_sections(
+    proposal_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Fetches the full proposal for viewing/review — trimmed to just what
+    the reviewer UI needs: proposal identity/status plus each section's id
+    and content, in order."""
+
+    proposal = await _get_proposal_or_404(db, proposal_id)
+    return _proposal_detail_response(proposal)
+
+
+@router.patch("/{proposal_id}/sections", response_model=ProposalDetailResponse)
+async def edit_proposal_sections(
+    proposal_id: int,
+    payload: ProposalSectionsReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Reorders/removes sections without regenerating content. Sections
+    omitted from the payload are deleted; sections included have their
+    order_index set to the given order."""
+
+    proposal = await _get_proposal_or_404(db, proposal_id)
+
+    existing_by_id = {section.id: section for section in proposal.sections}
+
+    for item in payload.sections:
+        if item.id not in existing_by_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Section {item.id} does not belong to proposal {proposal_id}",
+            )
+
+    keep_ids = {item.id for item in payload.sections}
+    for section_id, section in existing_by_id.items():
+        if section_id not in keep_ids:
+            await db.delete(section)
+
+    for item in payload.sections:
+        existing_by_id[item.id].order_index = item.order
+
+    await db.commit()
+    await db.refresh(proposal)
+    return _proposal_detail_response(proposal)
 
 

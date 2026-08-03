@@ -1,0 +1,19 @@
+# Development override — hot reload with the source tree bind-mounted.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# The named volumes over __pycache__ / .venv stop host artifacts (especially a
+# Windows-built .venv) from shadowing what's inside the image.
+
+services:
+  api:
+    environment:
+      RELOAD: "1"
+      LOG_LEVEL: "debug"
+    volumes:
+      - ./:/app
+      - ./.env:/app/.env:ro
+      - paddlex-cache:/home/app/.paddlex
+      # Anonymous volumes: keep the host's virtualenv/caches out of the container.
+      - /app/.venv
+      - /app/__pycache__

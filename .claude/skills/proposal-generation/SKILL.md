@@ -51,7 +51,7 @@ Tech stack
 
 # Quality Check / Regeneration
 
-- `run_quality_check`/`decide_section_status` (`generation/nodes.py`) are fully implemented but **not called anywhere in the live `/proposals/generate` stream** — every section there is persisted directly as `APPROVED` with no gate. If you want a quality gate in the main generation flow, you must explicitly add the call inside `generate_proposal_stream`'s per-section loop; it will not happen automatically just because the helper functions exist.
+- `run_quality_check`/`decide_section_status` (`generation/nodes.py`) are fully implemented but **not called anywhere in the live `/proposal/generate` stream** — every section there is persisted directly as `APPROVED` with no gate. If you want a quality gate in the main generation flow, you must explicitly add the call inside `generate_proposal_stream`'s per-section loop; it will not happen automatically just because the helper functions exist.
 - `services/proposal_review_service.py::regenerate_section` already wires the full draft → quality-check → decide-status sequence for single-section regeneration, but currently has no router endpoint exposing it (see the `system-workflow` skill's `review-workflow.md`). Before building a new "regenerate this section" feature from scratch, check whether re-exposing this existing function is enough.
 
 ---

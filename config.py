@@ -67,8 +67,11 @@ class RedisConfig(BaseModel):
 class SMTPConfig(BaseModel):
     host: str = "smtp.gmail.com"
     port: int = 587
-    username: str
-    password: str
+    # Only used by the "smtp" provider — an HTTPS-API provider authenticates
+    # with `api_key` instead, so a provider-only deployment can omit these
+    # rather than carrying dummy values just to satisfy validation.
+    username: Optional[str] = None
+    password: Optional[str] = None
     from_email: str
     use_tls: bool = True
 
@@ -88,8 +91,17 @@ class SMTPConfig(BaseModel):
     from_name: Optional[str] = None
 
     @model_validator(mode="after")
-    def check_api_key_present(self) -> "SMTPConfig":
-        if self.provider != "smtp" and not self.api_key:
+    def check_credentials_present(self) -> "SMTPConfig":
+        if self.provider == "smtp":
+            missing = [
+                name for name in ("username", "password") if not getattr(self, name)
+            ]
+            if missing:
+                raise ValueError(
+                    f"smtp.{' and smtp.'.join(missing)} "
+                    f"{'is' if len(missing) == 1 else 'are'} required when smtp.provider is 'smtp'"
+                )
+        elif not self.api_key:
             raise ValueError(f"smtp.api_key is required when smtp.provider is '{self.provider}'")
         return self
 

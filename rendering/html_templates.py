@@ -8,7 +8,7 @@ _HTML_DIR = Path(__file__).resolve().parent.parent / "html"
 # ProposalExportRequest.template_id.
 #
 # Keep the ids/names in step with constants.EXPORT_TEMPLATES (which drives
-# GET /proposals/templates and its S3 preview thumbnails) — nothing enforces
+# GET /proposal/templates and its S3 preview thumbnails) — nothing enforces
 # that the two stay in sync, and they previously disagreed: id 1 was listed as
 # "Modern" but rendered template_1.html, so picking Modern exported a design
 # that didn't match its own preview.
@@ -21,7 +21,7 @@ HTML_TEMPLATES: dict[int, str] = {
     4: "executive_preview.html",   # Executive
     # 5: "modern_preview.html",    # Modern — disabled alongside its entry in
     #                                constants.EXPORT_TEMPLATES. Re-enable both
-    #                                together, or /proposals/templates and the
+    #                                together, or /proposal/templates and the
     #                                renderer disagree about which ids exist.
 }
 

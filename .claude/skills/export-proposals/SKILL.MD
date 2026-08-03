@@ -23,7 +23,7 @@ Tech stack
 - The **only template registry actually used by rendering** is `rendering/html_templates.py`'s `HTML_TEMPLATES` map (`template_id → html file path`). Register any new export template there.
 - `rendering/templates.py` (`PROPOSAL_TEMPLATES`, pairing per-template `pdf_css` with a Pandoc `--reference-doc` for DOCX) is **not wired into the live pipeline** — don't add a new template there expecting it to take effect. If you're intentionally reviving richer per-template DOCX styling, you must also update `rendering/renderer.py::render_docx_from_html` to actually pass the reference-doc to pypandoc — right now no `extra_args`/reference-doc is passed at all, so DOCX output uses Pandoc's plain defaults regardless of which HTML template was used.
 - All visual styling for the live path must live inside the template's own embedded `<style>` block — neither `weasyprint.HTML(string=html).write_pdf()` nor the DOCX path receive any injected CSS from outside the template.
-- `constants.EXPORT_TEMPLATES` (used only by `GET /proposals/templates` for S3-hosted preview thumbnails) and `rendering.html_templates.HTML_TEMPLATES` (the actual render targets) are two separately-maintained dicts. If you add, remove, or renumber a template, update **both** — nothing enforces they stay in sync.
+- `constants.EXPORT_TEMPLATES` (used only by `GET /proposal/templates` for S3-hosted preview thumbnails) and `rendering.html_templates.HTML_TEMPLATES` (the actual render targets) are two separately-maintained dicts. If you add, remove, or renumber a template, update **both** — nothing enforces they stay in sync.
 
 ---
 

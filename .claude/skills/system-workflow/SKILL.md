@@ -27,7 +27,7 @@ flowchart TD
     end
 
     subgraph RD["2. Requirement Document"]
-        B1["POST /proposals/requirement-documents"] --> B2["S3: input/requirements/..."]
+        B1["POST /proposal/requirement-documents"] --> B2["S3: input/requirements/..."]
         B2 --> B3[("proposals row\nstatus=INPROGRESS")]
         B3 --> B4[("requirement_documents\nstatus=UPLOADING")]
         B4 --> B5["Extract -> Markdown"]
@@ -39,7 +39,7 @@ flowchart TD
     end
 
     subgraph GEN["3. Proposal Generation"]
-        C1["POST /proposals/generate (SSE)"] --> C2["Load proposal +\nall requirement_documents"]
+        C1["POST /proposal/generate (SSE)"] --> C2["Load proposal +\nall requirement_documents"]
         C2 --> C3["Combine parsed_data\n-> requirements_json"]
         C3 --> C4{"per section x12"}
         C4 --> C5["Retrieve top-8 chunks\nfrom Pinecone"]
@@ -51,8 +51,8 @@ flowchart TD
     end
 
     subgraph REV["4. Review & Status"]
-        D1["PATCH /proposals/id/sections\n(edit content)"] --> D2[("proposal_sections.content")]
-        D3["PATCH /proposals/id/status"] --> D4["forward-only:\nINPROGRESS<GENERATING<REVIEW<DONE"]
+        D1["PATCH /proposal/id/sections\n(edit content)"] --> D2[("proposal_sections.content")]
+        D3["PATCH /proposal/id/status"] --> D4["forward-only:\nINPROGRESS<GENERATING<REVIEW<DONE"]
     end
 
     subgraph EXP["5. Export"]
@@ -73,8 +73,8 @@ flowchart TD
 The codebase contains a fair amount of built-but-unreachable scaffolding. Do not assume something works just because the function exists — check whether anything actually calls it. Known gaps as of this writing:
 
 - **Arq/Redis background queue is fully wired but inert.** `tasks/arq_worker.py` registers `knowledge_document_job`, `requirement_document_job`, `proposal_generation_job`; `tasks/arq_pool.py::get_arq_pool()` always returns a `_NoOpArqPool` whose `enqueue_job` just logs and returns `None` (the real `arq.create_pool(...)` call is commented out). Nothing in the repo calls `enqueue_job`. In practice: knowledge-document processing runs via FastAPI `BackgroundTasks` (in-process, not a separate worker); requirement-document parsing and proposal generation both run **synchronously inside the HTTP request** (generation streams over SSE).
-- **Section-level LLM quality-check + regenerate/approve are unreachable via the API.** `generation/nodes.py::run_quality_check`/`decide_section_status` and `services/proposal_review_service.py::regenerate_section`/`approve_section` are fully implemented, but the router endpoints that used to expose them (`POST /proposal_sections/{id}/regenerate`, `POST /sections/{id}/approve`) are not present in the current working tree. The live `/proposals/generate` stream never calls the quality-check path at all — every section is force-persisted as `APPROVED` with no gate. See `references/review-workflow.md`.
-- **`Proposal.proposal_json`, `approved_markdown`, `is_approved`, `pdf_path` are always empty.** All four columns exist on the model and are returned in API responses, but no code path in the current tree ever writes them. The whole-proposal "approval" feature that used to populate `approved_markdown`/`is_approved` was deleted in commit `cffb589` (removal of the `APPROVED` status) and replaced by a simple forward-only `PATCH /proposals/{id}/status`.
+- **Section-level LLM quality-check + regenerate/approve are unreachable via the API.** `generation/nodes.py::run_quality_check`/`decide_section_status` and `services/proposal_review_service.py::regenerate_section`/`approve_section` are fully implemented, but the router endpoints that used to expose them (`POST /proposal_sections/{id}/regenerate`, `POST /sections/{id}/approve`) are not present in the current working tree. The live `/proposal/generate` stream never calls the quality-check path at all — every section is force-persisted as `APPROVED` with no gate. See `references/review-workflow.md`.
+- **`Proposal.proposal_json`, `approved_markdown`, `is_approved`, `pdf_path` are always empty.** All four columns exist on the model and are returned in API responses, but no code path in the current tree ever writes them. The whole-proposal "approval" feature that used to populate `approved_markdown`/`is_approved` was deleted in commit `cffb589` (removal of the `APPROVED` status) and replaced by a simple forward-only `PATCH /proposal/{id}/status`.
 - **`Proposal.category_ids` is read but never set** by any live code path, so the category filter on knowledge retrieval (`{"category_id": {"$in": category_ids}}`) is effectively always "no filter" today.
 - **Export never persists to S3.** `S3PathBuilder.proposal_docx`/`proposal_pdf` key builders exist for exactly this purpose but are never called — rendered PDF/DOCX bytes are returned directly in the HTTP response or streamed into an email, then discarded.
 - **`rendering/templates.py`** (`PROPOSAL_TEMPLATES`, per-template Pandoc `--reference-doc` DOCX styling + generated reference `.docx` files) is unused dead code. The live rendering path is `rendering/html_templates.py` → Jinja2 → weasyprint (PDF) / plain pandoc (DOCX, default styling only).
@@ -87,10 +87,10 @@ The codebase contains a fair amount of built-but-unreachable scaffolding. Do not
 | # | Flow | Entry point | Detail |
 |---|------|--------------|--------|
 | 1 | Knowledge ingestion | `POST /document/upload` | [references/knowledge-flow.md](references/knowledge-flow.md) |
-| 2 | Requirement document | `POST /proposals/requirement-documents` | [references/requirement-document-flow.md](references/requirement-document-flow.md) |
-| 3 | Proposal generation | `POST /proposals/generate` (SSE) | [references/proposal-generation-flow.md](references/proposal-generation-flow.md) |
-| 4 | Review & status | `PATCH /proposals/{id}/sections`, `PATCH /proposals/{id}/status` | [references/review-workflow.md](references/review-workflow.md) |
-| 5 | Export | `POST /proposals/{id}/export`, `.../export/email` | [references/export-flow.md](references/export-flow.md) |
+| 2 | Requirement document | `POST /proposal/requirement-documents` | [references/requirement-document-flow.md](references/requirement-document-flow.md) |
+| 3 | Proposal generation | `POST /proposal/generate` (SSE) | [references/proposal-generation-flow.md](references/proposal-generation-flow.md) |
+| 4 | Review & status | `PATCH /proposal/{id}/sections`, `PATCH /proposal/{id}/status` | [references/review-workflow.md](references/review-workflow.md) |
+| 5 | Export | `POST /proposal/{id}/export`, `.../export/email` | [references/export-flow.md](references/export-flow.md) |
 
 ## Storage map
 

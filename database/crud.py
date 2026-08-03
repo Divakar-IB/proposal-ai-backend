@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer, load_only, selectinload
 from sqlalchemy.sql import Select
 
 from database.db_enum import DocumentAvailability, ProposalStatus
@@ -148,7 +149,23 @@ async def delete_user(db: AsyncSession, user: User) -> None:
 
 
 def build_users_query() -> Select:
-    return select(User).order_by(User.created_at.desc())
+    # Only the columns router/team.py::_to_response actually renders. Notably
+    # this keeps hashed_password and otp_code out of the result set — no reason
+    # to pull credential material into memory to build a member listing.
+    return (
+        select(User)
+        .options(
+            load_only(
+                User.id,
+                User.full_name,
+                User.email,
+                User.role,
+                User.is_active,
+                User.created_at,
+            )
+        )
+        .order_by(User.created_at.desc())
+    )
 
 
 async def set_user_otp(db: AsyncSession, user: User, hashed_otp: str, expires_at: datetime) -> User:
@@ -200,7 +217,16 @@ def build_knowledge_documents_query(
     manual-upload listing shouldn't silently mix in proposal-derived entries
     unless a caller explicitly asks to see them."""
 
-    query = select(KnowledgeDocument).filter(KnowledgeDocument.is_active.is_(True))
+    # extracted_markdown holds the document's full text — easily hundreds of KB
+    # across a page of results — and DocumentResponse never exposes it. Defer
+    # it so a listing does not haul the entire knowledge base over the wire.
+    # (The ingestion pipeline reads it via get_knowledge_document_by_id, which
+    # is unaffected.)
+    query = (
+        select(KnowledgeDocument)
+        .options(defer(KnowledgeDocument.extracted_markdown))
+        .filter(KnowledgeDocument.is_active.is_(True))
+    )
     if not include_generated:
         query = query.filter(KnowledgeDocument.source_proposal_id.is_(None))
     if category_id is not None:
@@ -296,9 +322,28 @@ async def create_proposal(db: AsyncSession, proposal: Proposal) -> Proposal:
     return proposal
 
 
+# Proposal.requirement_documents is eagerly loaded (lazy="selectin"), which by
+# default pulls every column of each RequirementDocument — including
+# extracted_markdown, parsed_data, capability_tags and knowledge_matches. Those
+# average ~22 KB per document on real data, and the only thing any consumer
+# reads off this relationship is `.id` (router/proposals.py builds
+# `requirement_document_ids` from it).
+#
+# Restricting the eager load to the primary key keeps the relationship
+# populated exactly as before while dropping ~22 KB per document per request.
+# raiseload=True makes a future access to any other column fail immediately
+# with a clear SQLAlchemy error instead of emitting a silent extra query (or,
+# under asyncio, a confusing MissingGreenlet) — if you need more columns here,
+# widen this load_only rather than removing it.
+_REQUIREMENT_DOCUMENT_IDS_ONLY = selectinload(Proposal.requirement_documents).load_only(
+    RequirementDocument.id, raiseload=True
+)
+
+
 async def get_proposal_by_id(db: AsyncSession, proposal_id: int) -> Proposal | None:
     result = await db.execute(
         select(Proposal)
+        .options(_REQUIREMENT_DOCUMENT_IDS_ONLY)
         .filter(Proposal.id == proposal_id, Proposal.is_active.is_(True))
     )
     return result.scalars().first()
@@ -311,7 +356,11 @@ def build_proposals_query(
     created_from: Optional[datetime] = None,
     created_to: Optional[datetime] = None,
 ) -> Select:
-    query = select(Proposal).filter(Proposal.is_active.is_(True))
+    query = (
+        select(Proposal)
+        .options(_REQUIREMENT_DOCUMENT_IDS_ONLY)
+        .filter(Proposal.is_active.is_(True))
+    )
     if search:
         pattern = f"%{search}%"
         query = query.filter(or_(Proposal.title.ilike(pattern), Proposal.client_name.ilike(pattern)))

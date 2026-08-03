@@ -4,15 +4,15 @@
 
 There are two parallel section-drafting code paths sharing the same low-level helpers (`generation/nodes.py`), plus some dead code. Know these before touching generation:
 
-- **Path A — the live `/proposals/generate` pipeline**: a flat, sequential per-section loop in `generation/proposal_generator.py::generate_proposal_stream`. This is **not** a graph at runtime — `generation/state.py`'s `ProposalGenerationState`/`SectionState` TypedDicts (with `retry_count`/`feedback`/`confidence_score` fields) describe what looks like a draft→review→retry graph, but `generate_proposal_stream` never calls `run_quality_check` or `decide_section_status`. Every section is drafted once and immediately persisted as `APPROVED`. No graph library (no `langgraph`) is used anywhere in the repo.
+- **Path A — the live `/proposal/generate` pipeline**: a flat, sequential per-section loop in `generation/proposal_generator.py::generate_proposal_stream`. This is **not** a graph at runtime — `generation/state.py`'s `ProposalGenerationState`/`SectionState` TypedDicts (with `retry_count`/`feedback`/`confidence_score` fields) describe what looks like a draft→review→retry graph, but `generate_proposal_stream` never calls `run_quality_check` or `decide_section_status`. Every section is drafted once and immediately persisted as `APPROVED`. No graph library (no `langgraph`) is used anywhere in the repo.
 - **Path B — manual single-section regenerate**: `services/proposal_review_service.py::regenerate_section` *does* use the full draft → quality-check → decide-status sequence, single-shot (`force_approve=False` always). As of the current working tree this function has **no router endpoint** — see [review-workflow.md](review-workflow.md) §6.
 - **`generation/prompts.py`** (whole-document-in-one-call prompt) is unused dead code — nothing imports it. The prompt actually used for drafting is `prompts/proposal_generation.py`.
 - **Arq/Redis is disabled** — `tasks/arq_pool.py` always returns a no-op pool. `tasks/arq_worker.py` registers `proposal_generation_job` (→ `tasks/proposal_generation.py::generate_proposal`), but nothing enqueues it. Generation runs synchronously inside the HTTP request/response cycle over SSE.
-- **Two nearly-identical routers**: `router/proposals.py` (prefix `/proposals`, the real API) and `router/proposal_temp.py` (no prefix, tagged "Proposals", self-documented as a temporary demo-only wizard-support router). Both mounted in `main.py`. `proposal_temp.py` adds read/patch endpoints (`/proposal-state`, `/proposal-sections`) but does not add its own `/generate`.
+- **One proposals router**: `router/proposals.py` (prefix `/proposal`, tagged "Proposals"). The former second router `router/proposal_temp.py` (unprefixed, demo-only wizard support) has been folded into it — its endpoints are now `GET /proposal/{proposal_id}/state` and `GET`/`PATCH /proposal/{proposal_id}/sections`, with `proposal_id` as a path param. Its multi-file aggregation helpers live in `services/proposal_wizard_service.py`.
 
 ## 1. Entry point
 
-**`POST /proposals/generate`** — `router/proposals.py:209-235`.
+**`POST /proposal/generate`** — `router/proposals.py:209-235`.
 
 Request body — `ProposalGenerateRequest` (`schemas/proposal.py:15-18`):
 ```python
@@ -104,7 +104,7 @@ There is no LLM call that produces a single structured "whole proposal JSON" —
 
 ## 7. Async task mechanics
 
-`/proposals/generate` does not enqueue a background job — it calls `generate_proposal_stream` in-process and streams SSE directly from the request handler; generation runs for the lifetime of the HTTP connection. The parallel Arq path (`proposal_generation_job` → `tasks/proposal_generation.py::generate_proposal`, which fully drains the stream with `async for _ in ...: pass`) is registered but unreachable — nothing calls `enqueue_job` (see SKILL.md's dead-code list).
+`/proposal/generate` does not enqueue a background job — it calls `generate_proposal_stream` in-process and streams SSE directly from the request handler; generation runs for the lifetime of the HTTP connection. The parallel Arq path (`proposal_generation_job` → `tasks/proposal_generation.py::generate_proposal`, which fully drains the stream with `async for _ in ...: pass`) is registered but unreachable — nothing calls `enqueue_job` (see SKILL.md's dead-code list).
 
 ## 8. Multi-document proposal support
 
@@ -112,7 +112,7 @@ Migration `d7e8f9a0b1c2_multi_document_proposals_and_export.py` inverted the ori
 
 At generation time, all documents on the proposal are pulled via `get_requirement_documents_by_proposal_id` and merged: `build_combined_requirements_json` keys the combined dict by `file_name`, one entry per document. Per-section retrieval iterates every document's value for the relevant `query_fields`, folding all documents' fields into one retrieval query per section rather than querying per document.
 
-Note: the current upload endpoint (`POST /proposals/requirement-documents`) always creates a **new** `Proposal` row per call — there's no exposed "attach another document to an existing proposal_id" mode in the router, even though the model/schema fully support multiple documents per proposal.
+Note: the current upload endpoint (`POST /proposal/requirement-documents`) always creates a **new** `Proposal` row per call — there's no exposed "attach another document to an existing proposal_id" mode in the router, even though the model/schema fully support multiple documents per proposal.
 
 ## Other migrations of note
 

@@ -23,8 +23,8 @@ For a full narrative of how the existing routers/pipelines actually behave today
 # Router Organization
 
 - One router per domain (`router/documents.py`, `router/proposals.py`, `router/category.py`, `router/auth_router.py`, etc.), mounted in `main.py` via `app.include_router(...)` with an explicit `prefix` and `tags`.
-- Do not create a second parallel router for the same resource "temporarily" (this repo already has `router/proposal_temp.py` alongside `router/proposals.py`, which has caused endpoint drift — e.g. regenerate/approve routes existing in one but not the other at different points in time). If a route is genuinely temporary, mark it clearly (docstring + tag) and plan its removal; better yet, add it to the real router.
-- Register more specific/static paths (`GET /proposals/templates`, `GET /proposals/stats`) before parameterized paths (`GET /proposals/{proposal_id}`) to avoid path-matching collisions.
+- Do not create a second parallel router for the same resource "temporarily". This repo used to have `router/proposal_temp.py` alongside `router/proposals.py`, which caused endpoint drift — regenerate/approve routes existed in one but not the other at different points in time. It has since been folded into `router/proposals.py` (its endpoints are now `GET /proposal/{proposal_id}/state` and `GET`/`PATCH /proposal/{proposal_id}/sections`). If a route is genuinely temporary, mark it clearly (docstring + tag) and plan its removal; better yet, add it to the real router.
+- Register more specific/static paths (`GET /proposal/templates`, `GET /proposal/stats`) before parameterized paths (`GET /proposal/{proposal_id}`) to avoid path-matching collisions.
 
 ---
 

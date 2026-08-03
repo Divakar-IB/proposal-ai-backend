@@ -61,21 +61,25 @@ def _to_response(document: KnowledgeDocument) -> DocumentResponse:
     )
 
 
-async def _resolve_category_or_404(db: AsyncSession, category_id: int) -> Category:
-    result = await db.execute(
-        select(Category).filter(Category.id == category_id, Category.is_active.is_(True))
+async def _assert_category_exists(db: AsyncSession, category_id: int) -> None:
+    """Existence check only — both call sites discard the row, and the
+    category name shown in the response comes from the document's own
+    `category` relationship. Selecting the id alone avoids pulling the
+    description TEXT for nothing."""
+
+    exists = await db.scalar(
+        select(Category.id)
+        .filter(Category.id == category_id, Category.is_active.is_(True))
+        .limit(1)
     )
-    category = result.scalars().first()
-    if category is None:
+    if exists is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    return category
 
 
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
     background_tasks: BackgroundTasks,
      document_id: Optional[int] = Form(None),
-    
     document_name: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     category_id: Optional[int] = Form(None),
@@ -121,7 +125,7 @@ async def upload_document(
         if tags is not None:
             updates["tags"] = tags
         if category_id is not None:
-            await _resolve_category_or_404(db, category_id)
+            await _assert_category_exists(db, category_id)
             updates["category_id"] = category_id
 
         if file is not None:
@@ -185,7 +189,7 @@ async def upload_document(
             ),
         )
 
-    await _resolve_category_or_404(db, category_id)
+    await _assert_category_exists(db, category_id)
 
     logger.info(
         "upload started | user_id=%s category_id=%s filename=%s",
@@ -242,7 +246,7 @@ async def list_documents(
 ):
     """`include_generated=True` also surfaces knowledge documents that were
     auto-ingested from an approved proposal (see PATCH
-    /proposals/{id}/status) — hidden by default so the manual-upload list
+    /proposal/{id}/status) — hidden by default so the manual-upload list
     doesn't get mixed in with those."""
 
     query = build_knowledge_documents_query(

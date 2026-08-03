@@ -1,0 +1,36 @@
+# Secrets — never bake these into an image layer. The .env is mounted at
+# runtime (docker-compose) or CONFIG is passed as an env var instead.
+.env
+.env.*
+!.env.example
+
+# Local virtualenvs / caches
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# VCS / editors
+.git/
+.gitignore
+.idea/
+.vscode/
+
+# Local runtime artifacts
+# NOTE: html/ is NOT ignored — it holds the live export templates loaded by
+# rendering/html_templates.py at runtime.
+storage/
+*.log
+*.db
+*.sqlite3
+
+# Docs & tooling that don't affect the running app
+README.md
+API_ENDPOINTS.md
+DOCKER.md
+.claude/
+uv.lock

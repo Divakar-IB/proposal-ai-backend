@@ -7,13 +7,13 @@
 ## 1. End-to-end workflow (current state)
 
 **Wired-up entry points** (`router/proposals.py`):
-- `POST /proposals/requirement-documents` — creates the `Proposal` (`status=INPROGRESS`), see requirement-document-flow.md.
-- `POST /proposals/generate` — SSE generation stream, see proposal-generation-flow.md.
-- `PATCH /proposals/{proposal_id}/sections` — bulk manual edit of section `content` → `services/proposal_review_service.py::edit_sections`. Leaves `status`/`review_flag` untouched by design.
-- `PATCH /proposals/{proposal_id}/status` — manual proposal-status override, forward-only → `set_proposal_status`.
-- `GET /proposals/stats`, `GET /proposals` — dashboard/listing.
-- `DELETE /proposals/{proposal_id}` — soft delete (`is_active=False`).
-- `POST /proposals/{proposal_id}/export`, `POST /proposals/{proposal_id}/export/email` — render from **live section rows**, explicitly **not gated on approval** (see export-flow.md).
+- `POST /proposal/requirement-documents` — creates the `Proposal` (`status=INPROGRESS`), see requirement-document-flow.md.
+- `POST /proposal/generate` — SSE generation stream, see proposal-generation-flow.md.
+- `PATCH /proposal/{proposal_id}/sections` — bulk manual edit of section `content` → `services/proposal_review_service.py::edit_sections`. Leaves `status`/`review_flag` untouched by design.
+- `PATCH /proposal/{proposal_id}/status` — manual proposal-status override, forward-only → `set_proposal_status`.
+- `GET /proposal/stats`, `GET /proposal` — dashboard/listing.
+- `DELETE /proposal/{proposal_id}` — soft delete (`is_active=False`).
+- `POST /proposal/{proposal_id}/export`, `POST /proposal/{proposal_id}/export/email` — render from **live section rows**, explicitly **not gated on approval** (see export-flow.md).
 
 **Defined but with NO router endpoint currently** (orphaned service functions — see §6):
 - `services/proposal_review_service.py::approve_section(db, section_id)` — sets one `ProposalSection.status = APPROVED`, `review_flag=False`.
@@ -21,8 +21,8 @@
 
 **What a human reviewer actually does today, per the wired-up routes:**
 1. Generation streams sections; each is persisted directly as `APPROVED` with no quality check (see proposal-generation-flow.md §2), then `Proposal.status → REVIEW`.
-2. Reviewer edits section `content` via `PATCH /proposals/{id}/sections` — bulk replace by `section_id`, validated to belong to the same proposal, duplicates rejected.
-3. Reviewer (or another process) manually moves `Proposal.status` forward via `PATCH /proposals/{id}/status`, typically to `DONE`.
+2. Reviewer edits section `content` via `PATCH /proposal/{id}/sections` — bulk replace by `section_id`, validated to belong to the same proposal, duplicates rejected.
+3. Reviewer (or another process) manually moves `Proposal.status` forward via `PATCH /proposal/{id}/status`, typically to `DONE`.
 4. Export renders whatever the sections currently contain — it does not check `status`, `is_approved`, or `approved_markdown`.
 
 What's edited: section `content` (Markdown body) per `ProposalSection` row, individually addressable, bulk-editable in one request. No section-title/outline editing endpoint exists.
@@ -47,7 +47,7 @@ No `APPROVED`. Meanings, per actual code paths:
 | `INPROGRESS` | `router/proposals.py` (Proposal row created on requirement-doc upload) | Default/initial, before generation starts |
 | `GENERATING` | `generation/proposal_generator.py` | Section drafting in progress |
 | `REVIEW` | `generation/proposal_generator.py`, on successful completion | All sections drafted, markdown assembled to S3, awaiting human review/edits |
-| `DONE` | Only via `PATCH /proposals/{id}/status` | Terminal "finished reviewing" marker — no automatic gate on section states required to reach it (also set as a side-effect of export, see export-flow.md §5) |
+| `DONE` | Only via `PATCH /proposal/{id}/status` | Terminal "finished reviewing" marker — no automatic gate on section states required to reach it (also set as a side-effect of export, see export-flow.md §5) |
 | `FAILED` | `generation/proposal_generator.py` (exception), or manual override | Error/abort marker |
 
 **Transition rule** (`services/proposal_review_service.py::set_proposal_status`): forward-only through rank `INPROGRESS(0) < GENERATING(1) < REVIEW(2) < DONE(3)`; moving backward raises 409. `FAILED` is exempt from ranking in both directions — always settable, and once `FAILED`, any status can be set from it.
@@ -105,9 +105,9 @@ Migration chain relevant to this feature, in order: `f3a1c2d9b7e4` (client_name/
 ## 6. What's currently in flux (uncommitted, on top of `cffb589`)
 
 The uncommitted changes to `database/crud.py`, `router/proposals.py`, `schemas/proposal.py`, `services/proposal_review_service.py` are a **second, independent round of changes**:
-- Added: `GET /proposals/stats` + `ProposalStatsResponse` + `get_proposal_status_counts`/`get_proposal_stats` (dashboard breakdown by status).
-- Added: `DELETE /proposals/{proposal_id}` soft-delete + `delete_proposal` crud/service functions.
-- Removed: a commented-out `GET /proposals/{proposal_id}` route.
-- **Removed: `POST /proposal_sections/{section_id}/regenerate` and `POST /proposals/sections/{section_id}/approve` router endpoints**, while leaving their backing service functions (`regenerate_section`, `approve_section`) intact and now unused.
+- Added: `GET /proposal/stats` + `ProposalStatsResponse` + `get_proposal_status_counts`/`get_proposal_stats` (dashboard breakdown by status).
+- Added: `DELETE /proposal/{proposal_id}` soft-delete + `delete_proposal` crud/service functions.
+- Removed: a commented-out `GET /proposal/{proposal_id}` route.
+- **Removed: `POST /proposal_sections/{section_id}/regenerate` and `POST /proposal/sections/{section_id}/approve` router endpoints**, while leaving their backing service functions (`regenerate_section`, `approve_section`) intact and now unused.
 
-**This last point is the key open question for anyone picking up this area next:** as the code stands, a reviewer can only edit section content and move the whole-proposal status forward manually — there is no reachable per-section approve or regenerate-with-quality-check action, despite that logic being otherwise complete and working. Confirm with whoever owns this area whether this is an in-progress retirement of the feature or an accidental omission (e.g. endpoints meant to move into `router/proposal_temp.py` but not yet re-added) before building anything on top of it.
+**This last point is the key open question for anyone picking up this area next:** as the code stands, a reviewer can only edit section content and move the whole-proposal status forward manually — there is no reachable per-section approve or regenerate-with-quality-check action, despite that logic being otherwise complete and working. Confirm with whoever owns this area whether this is an in-progress retirement of the feature or an accidental omission before building anything on top of it.

@@ -1,5 +1,32 @@
 # Proposal AI Backend
 
+## API Changes — 2026-08-03 (read this if you work on the frontend)
+
+**Every proposal endpoint changed path. BREAKING — old paths return 404.** Two things happened:
+
+1. The router prefix was renamed **`/proposals` → `/proposal`** (singular), matching
+   `/document`, `/category`, `/team`, `/profile`.
+2. The temporary unprefixed wizard router (`router/proposal_temp.py`) was folded into the real
+   proposals router, so its three endpoints picked up the `/proposal` prefix and now take
+   `proposal_id` as a **path** param instead of a query param.
+
+Behaviour, request bodies, response shapes and status codes are unchanged throughout — paths only.
+
+| Method | From | To |
+|---|---|---|
+| `POST` | `/proposals/requirement-documents` | `/proposal/requirement-documents` |
+| `POST` | `/proposals/generate` | `/proposal/generate` |
+| `GET` | `/proposals` | `/proposal` |
+| `GET` | `/proposals/stats` | `/proposal/stats` |
+| `GET` | `/proposals/templates` | `/proposal/templates` |
+| `DELETE` | `/proposals/{id}` | `/proposal/{id}` |
+| `PATCH` | `/proposals/{id}/status?status={s}` | `/proposal/{id}/status?status={s}` |
+| `POST` | `/proposals/{id}/export` | `/proposal/{id}/export` |
+| `POST` | `/proposals/{id}/export/email` | `/proposal/{id}/export/email` |
+| `GET` | `/proposal-state?proposal_id={id}` | `/proposal/{id}/state` |
+| `GET` | `/proposal-sections?proposal_id={id}` | `/proposal/{id}/sections` |
+| `PATCH` | `/proposal-sections?proposal_id={id}` | `/proposal/{id}/sections` |
+
 ## API Changes — 2026-08-01 → 2026-08-02 (read this if you work on the frontend)
 
 Covers commits `409c80d`, `b768b53`, `0bad196`. **6 endpoints were removed and several
@@ -12,11 +39,10 @@ These now return **404 Not Found** (or **405** on a wrong method). Remove any cl
 | Method | Path | Why / what to use instead |
 |---|---|---|
 | `POST` | `/auth/refresh` | No replacement. The session now ends when the access token expires — the user must log in again. `/auth/login` still returns a `refresh_token`, but **there is nothing to redeem it against**; ignore that field. |
-| `PATCH` | `/proposals/{proposal_id}/sections` | Duplicate. Use `PATCH /proposal-sections?proposal_id={id}`. |
 | `GET` | `/document/{document_id}/download` | Use the `url` field on `DocumentResponse` — a presigned S3 URL (1-hour expiry) you can link to or fetch directly. |
 | `POST` | `/document/{document_id}/process` | Re-processing now happens automatically when a new file is uploaded to an existing document via `POST /document/upload` with `document_id`. |
-| `POST` | `/proposals/sections/{section_id}/regenerate` | Not currently exposed. |
-| `POST` | `/proposals/sections/{section_id}/approve` | Not currently exposed. Use `PATCH /proposals/{id}/status`. |
+| `POST` | `/proposal/sections/{section_id}/regenerate` | Not currently exposed. |
+| `POST` | `/proposal/sections/{section_id}/approve` | Not currently exposed. Use `PATCH /proposal/{id}/status`. |
 
 ### 2. Response payloads — fields removed — BREAKING
 
@@ -63,14 +89,14 @@ fields was always `null` / `false`. If the UI reads them, it must stop.
 
 | Endpoint | Returns | Affected? |
 |---|---|---|
-| `GET /proposals` | `{ data: ProposalResponse[], total, page, limit }` | **Yes** — both models (sections are nested in each item) |
-| `PATCH /proposals/{id}/status` | `ProposalResponse` | **Yes** — both models |
-| `GET /proposal-sections` | `ProposalDetailResponse` | No — uses a different, unchanged shape |
-| `PATCH /proposal-sections` | `ProposalDetailResponse` | No — uses a different, unchanged shape |
+| `GET /proposal` | `{ data: ProposalResponse[], total, page, limit }` | **Yes** — both models (sections are nested in each item) |
+| `PATCH /proposal/{id}/status` | `ProposalResponse` | **Yes** — both models |
+| `GET /proposal/{id}/sections` | `ProposalDetailResponse` | No — uses a different, unchanged shape |
+| `PATCH /proposal/{id}/sections` | `ProposalDetailResponse` | No — uses a different, unchanged shape |
 
 `ProposalDetailResponse` is unchanged and stays `{ id, title, client_name, status, sections: [{ id, title, content, order }] }`.
 
-### 3. `POST /proposals/generate` — minimum 5 pages — BREAKING
+### 3. `POST /proposal/generate` — minimum 5 pages — BREAKING
 
 `page_count` must now be **≥ 5**. Anything lower is rejected with **422** before generation starts.
 Every proposal section is always generated, and below 5 pages they cannot fit their required
@@ -88,7 +114,7 @@ subsections. Enforce a `min=5` on the input.
 Generation now also sizes each section's content to the requested page count, so a 5-page
 request produces a genuinely ~5-page document instead of overrunning.
 
-### 4. `GET /proposals/templates` — template list changed — BREAKING
+### 4. `GET /proposal/templates` — template list changed — BREAKING
 
 Now returns **5** templates, and **id 1 was renamed**. Previously id 1 was `"Modern"` but
 exported a different design than its own preview showed — that mismatch is fixed.
@@ -112,8 +138,8 @@ exported a different design than its own preview showed — that mismatch is fix
 
 ### 5. Export — `template_id` now optional
 
-`template_id` defaults to `1` (Professional) on both `POST /proposals/{id}/export` and
-`POST /proposals/{id}/export/email`. Send it explicitly to pick another template.
+`template_id` defaults to `1` (Professional) on both `POST /proposal/{id}/export` and
+`POST /proposal/{id}/export/email`. Send it explicitly to pick another template.
 
 Only the Professional template is style-matched between PDF and DOCX (headings `#0d2b5e`,
 sub-headings `#1a5fb4`, everything else black). The other four still export DOCX with Word's
@@ -285,6 +311,14 @@ alembic revision --autogenerate -m "message"        # create a migration
 alembic downgrade -1                                # roll back one migration
 pytest                                              # run tests
 ```
+
+## Testing
+
+`pytest` runs the full API suite (346 tests, ~14s) against the real FastAPI app
+backed by an in-memory SQLite stand-in for Postgres — no Postgres, Docker, Redis
+or network access needed. See **[TESTING.md](TESTING.md)** for the harness
+design, how the mock database is wired up, per-router case coverage, and an
+explanation of the three `xfail`-marked bugs it pins.
 
 ## Troubleshooting
 

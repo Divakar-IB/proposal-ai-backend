@@ -83,10 +83,15 @@ KNOWLEDGE_CATEGORIES = [
 # preview_key is the S3 object key; the presigned preview_url is generated
 # fresh per request (see router/proposals.py) instead of being baked in here
 # — a hardcoded presigned URL expires (that's what broke previously).
-# Drives GET /proposals/templates (name/description + S3 preview thumbnail).
+# Drives GET /proposal/templates (name/description + S3 preview thumbnail).
 # The ids MUST match rendering.html_templates.HTML_TEMPLATES, which is what
 # actually gets rendered on export — nothing enforces it, and they previously
 # disagreed (id 1 was named "Modern" here but rendered template_1.html).
+# The S3 preview object must also hold the *same* design as the html/ file that
+# id renders: the previews for Minimal and Executive were once uploaded crossed
+# (proposal_templates/Minimal held the Executive design), which looked exactly
+# like "export swaps templates 2 and 4" even though the renderer was correct.
+# When adding/refreshing a template, upload html/<file> to its own preview_key.
 EXPORT_TEMPLATES = [
     {
         "id": 1,
@@ -98,7 +103,7 @@ EXPORT_TEMPLATES = [
         "id": 2,
         "name": "Minimal",
         "description": "Typography-first",
-        "preview_key": "proposal_templates/Minimal",
+        "preview_key": "proposal_templates/minimal_preview",
     },
     {
         "id": 3,

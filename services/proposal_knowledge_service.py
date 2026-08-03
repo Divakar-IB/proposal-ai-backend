@@ -40,7 +40,7 @@ async def get_or_create_proposal_knowledge_document(db, proposal: Proposal) -> K
     """Reassembles the proposal's *current* sections into Markdown (fixing a
     staleness gap: Proposal.markdown_path's S3 blob is only ever written
     once, at the end of generation, and never refreshed after sections are
-    hand-edited via PATCH /proposals/{id}/sections) and upserts a single
+    hand-edited via PATCH /proposal/{id}/sections) and upserts a single
     KnowledgeDocument row for it.
 
     Reused, not recreated, across repeated re-approvals — one proposal maps
@@ -101,7 +101,7 @@ async def get_or_create_proposal_knowledge_document(db, proposal: Proposal) -> K
 
 async def ingest_proposal_as_knowledge(proposal_id: int) -> None:
     """Background-task entry point, triggered every time a proposal's status
-    is explicitly set to DONE via PATCH /proposals/{id}/status (see
+    is explicitly set to DONE via PATCH /proposal/{id}/status (see
     router/proposals.py) — re-runs on every call, not just the first, so
     re-approving a proposal after further edits re-indexes the latest
     content. Reuses the existing, unmodified knowledge-ingestion pipeline
