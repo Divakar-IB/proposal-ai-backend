@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 import pypandoc
 from jinja2 import Environment, FileSystemLoader
@@ -24,9 +23,9 @@ def render_proposal_html(
     template_id: int,
     client_name: str,
     proposal_id: int,
-    organization_name: Optional[str] = None,
-    contact_name: Optional[str] = None,
-    contact_email: Optional[str] = None,
+    organization_name: str | None = None,
+    contact_name: str | None = None,
+    contact_email: str | None = None,
     version: str = DEFAULT_PROPOSAL_VERSION,
 ) -> str:
     """JSON -> HTML: renders the selected html/template_N.html file with the

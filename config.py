@@ -1,12 +1,13 @@
-import os
 import json
-from pydantic import BaseModel, Field, model_validator
-from pydantic_settings import BaseSettings
-from typing import Any, List, Literal, Optional
+import os
+from typing import Any, Literal
 
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field, model_validator
+from pydantic_settings import BaseSettings
 
 load_dotenv()
+
 
 class DatabaseConfig(BaseModel):
     username: str
@@ -27,11 +28,13 @@ class JWTConfig(BaseModel):
     refresh_token_expire_days: int = 7
     issuer: str = "proposal-ai"
 
+
 class AWSConfig(BaseModel):
     access_key_id: str
     secret_access_key: str
     region: str
     bucket_name: str
+
 
 class PineconeConfig(BaseModel):
     api_key: str
@@ -41,10 +44,12 @@ class PineconeConfig(BaseModel):
     cloud: str = "aws"
     region: str = "us-east-1"
 
+
 class GroqConfig(BaseModel):
     api_key: str
     base_url: str = "https://api.groq.com/openai/v1"
     llm_model: str = "openai/gpt-oss-120b"
+
 
 class HFInferenceConfig(BaseModel):
     api_token: str
@@ -54,15 +59,14 @@ class HFInferenceConfig(BaseModel):
     @property
     def embedding_api_url(self) -> str:
 
-        return (
-            f"{self.hf_base_api_url.rstrip('/')}/"
-            f"{self.embedding_model}/pipeline/feature-extraction"
-        )
+        return f"{self.hf_base_api_url.rstrip('/')}/{self.embedding_model}/pipeline/feature-extraction"
+
 
 class RedisConfig(BaseModel):
     host: str = "localhost"
     port: int = 6379
     db: int = 0
+
 
 class SMTPConfig(BaseModel):
     host: str = "smtp.gmail.com"
@@ -70,8 +74,8 @@ class SMTPConfig(BaseModel):
     # Only used by the "smtp" provider — an HTTPS-API provider authenticates
     # with `api_key` instead, so a provider-only deployment can omit these
     # rather than carrying dummy values just to satisfy validation.
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: str | None = None
+    password: str | None = None
     from_email: str
     use_tls: bool = True
 
@@ -87,15 +91,13 @@ class SMTPConfig(BaseModel):
     # `from_email` is reused as the sender for every provider. For a real
     # provider the sending domain usually has to be verified with them first.
     provider: Literal["smtp", "resend", "brevo", "sendgrid"] = "smtp"
-    api_key: Optional[str] = None
-    from_name: Optional[str] = None
+    api_key: str | None = None
+    from_name: str | None = None
 
     @model_validator(mode="after")
     def check_credentials_present(self) -> "SMTPConfig":
         if self.provider == "smtp":
-            missing = [
-                name for name in ("username", "password") if not getattr(self, name)
-            ]
+            missing = [name for name in ("username", "password") if not getattr(self, name)]
             if missing:
                 raise ValueError(
                     f"smtp.{' and smtp.'.join(missing)} "
@@ -104,6 +106,7 @@ class SMTPConfig(BaseModel):
         elif not self.api_key:
             raise ValueError(f"smtp.api_key is required when smtp.provider is '{self.provider}'")
         return self
+
 
 class AppConfig(BaseSettings):
     database: DatabaseConfig
@@ -115,7 +118,7 @@ class AppConfig(BaseSettings):
     redis: RedisConfig = RedisConfig()
     smtp: SMTPConfig
     debug: bool = False
-    allowed_origins: List[str] = Field(default_factory=list)
+    allowed_origins: list[str] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -124,8 +127,9 @@ class AppConfig(BaseSettings):
             raw_config = os.environ.get("CONFIG")
             if not raw_config:
                 raise RuntimeError(
-                    '''CONFIG environment variable is required 
-                    and must be a valid JSON string.''')
+                    """CONFIG environment variable is required 
+                    and must be a valid JSON string."""
+                )
             try:
                 data = json.loads(raw_config)
             except Exception as e:
@@ -134,6 +138,7 @@ class AppConfig(BaseSettings):
 
     class Config:
         env_file = None
-        arbitrary_types_allowed = True 
+        arbitrary_types_allowed = True
+
 
 config = AppConfig()

@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 _HTML_DIR = Path(__file__).resolve().parent.parent / "html"
 
@@ -15,10 +14,10 @@ _HTML_DIR = Path(__file__).resolve().parent.parent / "html"
 DEFAULT_TEMPLATE_ID = 1
 
 HTML_TEMPLATES: dict[int, str] = {
-    1: "template_1.html",          # Professional (default)
-    2: "minimal.html",             # Minimal
-    3: "corporate_preview.html",   # Corporate
-    4: "executive_preview.html",   # Executive
+    1: "template_1.html",  # Professional (default)
+    2: "minimal.html",  # Minimal
+    3: "corporate_preview.html",  # Corporate
+    4: "executive_preview.html",  # Executive
     # 5: "modern_preview.html",    # Modern — disabled alongside its entry in
     #                                constants.EXPORT_TEMPLATES. Re-enable both
     #                                together, or /proposal/templates and the
@@ -38,14 +37,14 @@ DOCX_REFERENCES: dict[int, str] = {
 }
 
 
-def get_html_template_path(template_id: int) -> Optional[Path]:
+def get_html_template_path(template_id: int) -> Path | None:
     filename = HTML_TEMPLATES.get(template_id)
     if filename is None:
         return None
     return _HTML_DIR / filename
 
 
-def get_docx_reference_path(template_id: int) -> Optional[Path]:
+def get_docx_reference_path(template_id: int) -> Path | None:
     """None means "no styled reference for this template" — Pandoc then falls
     back to its own default styling for the DOCX export."""
 

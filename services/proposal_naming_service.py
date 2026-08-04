@@ -1,11 +1,8 @@
-from typing import Optional
-
-
 def generate_proposal_name(
     client_name: str,
     project_title: str,
-    organization_name: Optional[str] = None,
-    template: Optional[str] = None,
+    organization_name: str | None = None,
+    template: str | None = None,
 ) -> str:
     """Builds a human-readable proposal name, e.g.
     "ABC Technologies - ERP Modernization Proposal", or, when an

@@ -36,9 +36,9 @@ Persistence gap: `is_approved`, `approved_markdown`, `proposal_json` exist on `P
 class ProposalStatus(str, Enum):
     INPROGRESS = "inprogress"
     GENERATING = "generating"
-    REVIEW     = "review"
-    DONE       = "done"
-    FAILED     = "failed"
+    REVIEW = "review"
+    DONE = "done"
+    FAILED = "failed"
 ```
 No `APPROVED`. Meanings, per actual code paths:
 

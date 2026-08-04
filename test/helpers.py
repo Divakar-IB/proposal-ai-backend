@@ -6,7 +6,7 @@ because the repo has a top-level ``test.py`` script that shadows the ``test``
 package name.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from authentication.jwt_handler import create_access_token
 from database.models import User
@@ -26,7 +26,7 @@ def utc_now() -> datetime:
     """Naive UTC: the datetime columns are timezone-less and the OTP check
     compares against ``datetime.now(utc).replace(tzinfo=None)``."""
 
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def minutes_from_now(minutes: int) -> datetime:

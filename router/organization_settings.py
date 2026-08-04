@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +25,7 @@ router = APIRouter(
 s3_service = S3Service()
 
 
-def _to_response(settings: Optional[OrganizationSettings]) -> OrganizationSettingsResponse:
+def _to_response(settings: OrganizationSettings | None) -> OrganizationSettingsResponse:
     if settings is None:
         return OrganizationSettingsResponse()
 

@@ -12,10 +12,10 @@ from authentication.jwt_handler import (
 from database.crud import get_user_by_email
 from database.db_enum import UserRole
 
-
 # ------------------------------------------------------------------
 # POST /auth/register
 # ------------------------------------------------------------------
+
 
 async def test_register_creates_user(client, db):
     response = await client.post(
@@ -103,12 +103,11 @@ async def test_register_validation_errors(client, payload):
 # POST /auth/login
 # ------------------------------------------------------------------
 
+
 async def test_login_returns_tokens_and_role(client, factory):
     user = await factory.user(email="login@example.com", role=UserRole.ADMIN)
 
-    response = await client.post(
-        "/auth/login", json={"email": user.email, "password": TEST_PASSWORD}
-    )
+    response = await client.post("/auth/login", json={"email": user.email, "password": TEST_PASSWORD})
 
     assert response.status_code == 200
     body = response.json()
@@ -139,9 +138,7 @@ async def test_login_rejects_wrong_password(client, factory):
 async def test_login_rejects_unknown_email_with_the_same_message(client):
     """Unknown address and wrong password must be indistinguishable."""
 
-    response = await client.post(
-        "/auth/login", json={"email": "nobody@example.com", "password": TEST_PASSWORD}
-    )
+    response = await client.post("/auth/login", json={"email": "nobody@example.com", "password": TEST_PASSWORD})
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid email or password"
@@ -150,9 +147,7 @@ async def test_login_rejects_unknown_email_with_the_same_message(client):
 async def test_login_rejects_inactive_account(client, factory):
     user = await factory.user(email="inactive@example.com", is_active=False)
 
-    response = await client.post(
-        "/auth/login", json={"email": user.email, "password": TEST_PASSWORD}
-    )
+    response = await client.post("/auth/login", json={"email": user.email, "password": TEST_PASSWORD})
 
     assert response.status_code == 403
     assert "inactive" in response.json()["detail"].lower()
@@ -231,14 +226,11 @@ async def test_forgot_password_validates_email(client):
 # POST /auth/verify_otp
 # ------------------------------------------------------------------
 
-async def test_verify_otp_returns_a_reset_token_and_consumes_the_otp(client, factory, db):
-    user = await factory.user(
-        email="otp@example.com", otp_code="123456", otp_expires_at=minutes_from_now(10)
-    )
 
-    response = await client.post(
-        "/auth/verify_otp", json={"email": user.email, "otp": "123456"}
-    )
+async def test_verify_otp_returns_a_reset_token_and_consumes_the_otp(client, factory, db):
+    user = await factory.user(email="otp@example.com", otp_code="123456", otp_expires_at=minutes_from_now(10))
+
+    response = await client.post("/auth/verify_otp", json={"email": user.email, "otp": "123456"})
 
     assert response.status_code == 200
     assert response.json()["reset_token"]
@@ -248,9 +240,7 @@ async def test_verify_otp_returns_a_reset_token_and_consumes_the_otp(client, fac
 
 
 async def test_verify_otp_is_single_use(client, factory):
-    user = await factory.user(
-        email="once@example.com", otp_code="123456", otp_expires_at=minutes_from_now(10)
-    )
+    user = await factory.user(email="once@example.com", otp_code="123456", otp_expires_at=minutes_from_now(10))
 
     first = await client.post("/auth/verify_otp", json={"email": user.email, "otp": "123456"})
     second = await client.post("/auth/verify_otp", json={"email": user.email, "otp": "123456"})
@@ -260,9 +250,7 @@ async def test_verify_otp_is_single_use(client, factory):
 
 
 async def test_verify_otp_rejects_expired_otp(client, factory):
-    user = await factory.user(
-        email="expired@example.com", otp_code="123456", otp_expires_at=minutes_from_now(-1)
-    )
+    user = await factory.user(email="expired@example.com", otp_code="123456", otp_expires_at=minutes_from_now(-1))
 
     response = await client.post("/auth/verify_otp", json={"email": user.email, "otp": "123456"})
 
@@ -271,9 +259,7 @@ async def test_verify_otp_rejects_expired_otp(client, factory):
 
 
 async def test_verify_otp_rejects_wrong_code(client, factory):
-    user = await factory.user(
-        email="mismatch@example.com", otp_code="123456", otp_expires_at=minutes_from_now(10)
-    )
+    user = await factory.user(email="mismatch@example.com", otp_code="123456", otp_expires_at=minutes_from_now(10))
 
     response = await client.post("/auth/verify_otp", json={"email": user.email, "otp": "000000"})
 
@@ -289,9 +275,7 @@ async def test_verify_otp_rejects_user_without_a_pending_otp(client, factory):
 
 
 async def test_verify_otp_rejects_unknown_email(client):
-    response = await client.post(
-        "/auth/verify_otp", json={"email": "ghost@example.com", "otp": "123456"}
-    )
+    response = await client.post("/auth/verify_otp", json={"email": "ghost@example.com", "otp": "123456"})
     assert response.status_code == 400
 
 
@@ -312,17 +296,14 @@ async def test_verify_otp_rejects_inactive_user(client, factory):
 # POST /auth/new_password
 # ------------------------------------------------------------------
 
+
 async def test_new_password_completes_the_forgot_password_flow(client, factory):
-    user = await factory.user(
-        email="flow@example.com", otp_code="123456", otp_expires_at=minutes_from_now(10)
-    )
+    user = await factory.user(email="flow@example.com", otp_code="123456", otp_expires_at=minutes_from_now(10))
 
     verified = await client.post("/auth/verify_otp", json={"email": user.email, "otp": "123456"})
     reset_token = verified.json()["reset_token"]
 
-    changed = await client.post(
-        "/auth/new_password", json={"reset_token": reset_token, "new_password": "Brand@New1"}
-    )
+    changed = await client.post("/auth/new_password", json={"reset_token": reset_token, "new_password": "Brand@New1"})
     assert changed.status_code == 200
 
     old = await client.post("/auth/login", json={"email": user.email, "password": TEST_PASSWORD})
@@ -332,9 +313,7 @@ async def test_new_password_completes_the_forgot_password_flow(client, factory):
 
 
 async def test_new_password_rejects_a_garbage_token(client):
-    response = await client.post(
-        "/auth/new_password", json={"reset_token": "not-a-jwt", "new_password": "Brand@New1"}
-    )
+    response = await client.post("/auth/new_password", json={"reset_token": "not-a-jwt", "new_password": "Brand@New1"})
     assert response.status_code == 401
 
 
@@ -345,9 +324,7 @@ async def test_new_password_rejects_an_access_token(client, factory):
     user = await factory.user(email="swap@example.com")
     access_token = create_access_token(user.id, user.email, user.role.value)
 
-    response = await client.post(
-        "/auth/new_password", json={"reset_token": access_token, "new_password": "Brand@New1"}
-    )
+    response = await client.post("/auth/new_password", json={"reset_token": access_token, "new_password": "Brand@New1"})
 
     assert response.status_code == 401
 
@@ -367,9 +344,7 @@ async def test_new_password_rejects_an_expired_token(client, factory):
     user = await factory.user(email="stale@example.com")
     expired = create_password_reset_token(user.id, expire_minutes=-1)
 
-    response = await client.post(
-        "/auth/new_password", json={"reset_token": expired, "new_password": "Brand@New1"}
-    )
+    response = await client.post("/auth/new_password", json={"reset_token": expired, "new_password": "Brand@New1"})
 
     assert response.status_code == 401
 
@@ -381,9 +356,7 @@ async def test_new_password_404s_when_the_user_was_removed_meanwhile(client, fac
     user.is_active = False
     await db.commit()
 
-    response = await client.post(
-        "/auth/new_password", json={"reset_token": token, "new_password": "Brand@New1"}
-    )
+    response = await client.post("/auth/new_password", json={"reset_token": token, "new_password": "Brand@New1"})
 
     assert response.status_code == 404
 
@@ -392,9 +365,7 @@ async def test_new_password_enforces_minimum_length(client, factory):
     user = await factory.user(email="short@example.com")
     token = create_password_reset_token(user.id, expire_minutes=10)
 
-    response = await client.post(
-        "/auth/new_password", json={"reset_token": token, "new_password": "Short1"}
-    )
+    response = await client.post("/auth/new_password", json={"reset_token": token, "new_password": "Short1"})
 
     assert response.status_code == 422
 
@@ -402,6 +373,7 @@ async def test_new_password_enforces_minimum_length(client, factory):
 # ------------------------------------------------------------------
 # POST /auth/reset_password (authenticated)
 # ------------------------------------------------------------------
+
 
 async def test_reset_password_changes_the_password(client, factory):
     user = await factory.user(email="change@example.com")
@@ -490,6 +462,7 @@ async def test_reset_password_404s_for_a_deleted_user(client, factory, db):
 # POST /auth/create-user (admin only)
 # ------------------------------------------------------------------
 
+
 async def test_admin_can_create_a_user(client, admin_headers, db):
     response = await client.post(
         "/auth/create-user",
@@ -529,6 +502,7 @@ async def test_create_user_is_forbidden_for_members(client, member_headers):
 # ------------------------------------------------------------------
 # Token handling on protected routes
 # ------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "headers, expected",

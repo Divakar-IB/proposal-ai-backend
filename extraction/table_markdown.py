@@ -7,7 +7,8 @@ syntax (see chunking/table_aware.py) — a malformed row silently stops being
 treated as a table and gets split like prose.
 """
 
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 # A cell that still contains a newline or an unescaped pipe would terminate the
 # row early and corrupt every column after it, so both are neutralised.
@@ -27,7 +28,7 @@ def clean_cell(value: Any) -> str:
     return " ".join(text.split())
 
 
-def rows_to_markdown(rows: Iterable[Iterable[Any]], min_rows: int = 1) -> Optional[str]:
+def rows_to_markdown(rows: Iterable[Iterable[Any]], min_rows: int = 1) -> str | None:
     """Renders a grid as a Markdown table, or returns None if there's nothing
     worth emitting.
 

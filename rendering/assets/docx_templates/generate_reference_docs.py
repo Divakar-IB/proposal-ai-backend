@@ -42,12 +42,15 @@ def _add_heading_bottom_border(document: Document, style_name: str, color: str, 
     style = document.styles[style_name]
     ppr = style.element.get_or_add_pPr()
     pbdr = ppr.makeelement(qn("w:pBdr"), {})
-    bottom = pbdr.makeelement(qn("w:bottom"), {
-        qn("w:val"): "single",
-        qn("w:sz"): str(size),
-        qn("w:space"): "4",
-        qn("w:color"): color,
-    })
+    bottom = pbdr.makeelement(
+        qn("w:bottom"),
+        {
+            qn("w:val"): "single",
+            qn("w:sz"): str(size),
+            qn("w:space"): "4",
+            qn("w:color"): color,
+        },
+    )
     pbdr.append(bottom)
     ppr.append(pbdr)
 

@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -7,17 +6,17 @@ from database.db_enum import DocumentAvailability, IngestionStatus
 
 
 class DocumentUpdateRequest(BaseModel):
-    document_name: Optional[str] = None
-    description: Optional[str] = None
-    category_id: Optional[int] = None
-    availability_status: Optional[DocumentAvailability] = None
-    tags: Optional[list[str]] = None
+    document_name: str | None = None
+    description: str | None = None
+    category_id: int | None = None
+    availability_status: DocumentAvailability | None = None
+    tags: list[str] | None = None
 
 
 class DocumentResponse(BaseModel):
     id: int
     document_name: str
-    description: Optional[str] = None
+    description: str | None = None
     file_name: str
     extension: str
     category_id: int
@@ -32,7 +31,6 @@ class DocumentResponse(BaseModel):
 
     class Config:
         from_attributes = True
-            
 
 
 class DocumentListResponse(BaseModel):

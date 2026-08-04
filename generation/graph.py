@@ -1,6 +1,7 @@
 import asyncio
 import json
-from typing import Any, AsyncIterator, Callable, Iterator, Optional
+from collections.abc import AsyncIterator, Callable, Iterator
+from typing import Any
 
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
@@ -38,20 +39,24 @@ s3_service = S3Service()
 def _build_drafting_note(
     proposal_title: str,
     client_name: str,
-    additional_context: Optional[str],
+    additional_context: str | None,
     word_target: int,
     page_count: int,
-    outline: Optional[list[str]],
+    outline: list[str] | None,
 ) -> str:
     """Per-section drafting note: what is being written, then the strict word
     range for this section, then its required subsection outline. The length
     clause is deliberately last-but-one so it sits close to the outline it
     constrains."""
 
-    header = "\n".join(part for part in [
-        f"Proposal: {proposal_title} — Client: {client_name}",
-        f"Additional context: {additional_context}" if additional_context else None,
-    ] if part)
+    header = "\n".join(
+        part
+        for part in [
+            f"Proposal: {proposal_title} — Client: {client_name}",
+            f"Additional context: {additional_context}" if additional_context else None,
+        ]
+        if part
+    )
 
     parts = [
         header,
@@ -80,9 +85,7 @@ async def load_context(state: ProposalGenerationState) -> dict[str, Any]:
         requirements_json = build_combined_requirements_json(requirement_documents)
         requirements = json.loads(requirements_json) if requirements_json else {}
 
-        has_knowledge = (
-            generation_mode == GenerationMode.KNOWLEDGE_AUGMENTED and await has_any_knowledge_chunks(db)
-        )
+        has_knowledge = generation_mode == GenerationMode.KNOWLEDGE_AUGMENTED and await has_any_knowledge_chunks(db)
 
         proposal_title = proposal.title
         client_name = proposal.client_name
@@ -91,7 +94,8 @@ async def load_context(state: ProposalGenerationState) -> dict[str, Any]:
 
         await delete_proposal_sections_for_proposal(db, proposal.id)
         await update_proposal(
-            db, proposal,
+            db,
+            proposal,
             status=ProposalStatus.GENERATING,
             generation_mode=generation_mode,
             page_count=page_count,
@@ -109,17 +113,26 @@ async def load_context(state: ProposalGenerationState) -> dict[str, Any]:
         logger.warning(
             "page_count below the %s-page minimum | proposal_id=%s page_count=%s: sections "
             "cannot cover their required subsections at this length",
-            MIN_PROPOSAL_PAGES, proposal_id, page_count,
+            MIN_PROPOSAL_PAGES,
+            proposal_id,
+            page_count,
         )
     if allocated > budget:
         logger.warning(
             "page_count too small for the section list | proposal_id=%s page_count=%s "
             "budget_words=%s floor_words=%s sections=%s — the export will run long",
-            proposal_id, page_count, budget, allocated, len(SECTION_DEFINITIONS),
+            proposal_id,
+            page_count,
+            budget,
+            allocated,
+            len(SECTION_DEFINITIONS),
         )
     logger.info(
         "section word budget allocated | proposal_id=%s page_count=%s budget_words=%s allocated=%s",
-        proposal_id, page_count, budget, allocated,
+        proposal_id,
+        page_count,
+        budget,
+        allocated,
     )
 
     return {
@@ -141,9 +154,12 @@ async def start_section(state: ProposalGenerationState) -> dict[str, Any]:
     definition = SECTION_DEFINITIONS[state["current_section_index"]]
 
     drafting_note = _build_drafting_note(
-        state["proposal_title"], state["client_name"], state["additional_context"],
+        state["proposal_title"],
+        state["client_name"],
+        state["additional_context"],
         state["word_targets"].get(definition["key"], MIN_SECTION_WORDS),
-        state["page_count"], definition.get("outline"),
+        state["page_count"],
+        definition.get("outline"),
     )
 
     section_state: SectionState = {
@@ -169,7 +185,10 @@ async def retrieve(state: ProposalGenerationState) -> dict[str, Any]:
 
     async with db_session() as db:
         section_state["retrieved_chunks"] = await retrieve_chunks_for_section(
-            db, section_state, state["requirements"], state["has_knowledge"],
+            db,
+            section_state,
+            state["requirements"],
+            state["has_knowledge"],
         )
 
     return {"current_section": section_state}
@@ -222,9 +241,7 @@ async def draft(state: ProposalGenerationState) -> dict[str, Any]:
     writer = get_stream_writer()
 
     content_parts: list[str] = []
-    async for delta in _aiter_blocking(
-        lambda: draft_one_section_stream(section_state, state["requirements_json"])
-    ):
+    async for delta in _aiter_blocking(lambda: draft_one_section_stream(section_state, state["requirements_json"])):
         content_parts.append(delta)
         writer({"event": "section_chunk", "data": {"content": delta}})
 
@@ -240,26 +257,32 @@ async def persist_section(state: ProposalGenerationState) -> dict[str, Any]:
     order_index = state["current_section_index"]
 
     async with db_session() as db:
-        await create_proposal_sections(db, [
-            ProposalSection(
-                proposal_id=state["proposal_id"],
-                section_key=section_state["key"],
-                title=section_state["title"],
-                order_index=order_index,
-                content=section_state["content"],
-                citations=section_state["citations"],
-                status=ProposalSectionStatus.APPROVED,
-            )
-        ])
+        await create_proposal_sections(
+            db,
+            [
+                ProposalSection(
+                    proposal_id=state["proposal_id"],
+                    section_key=section_state["key"],
+                    title=section_state["title"],
+                    order_index=order_index,
+                    content=section_state["content"],
+                    citations=section_state["citations"],
+                    status=ProposalSectionStatus.APPROVED,
+                )
+            ],
+        )
 
     writer = get_stream_writer()
     writer({"event": "section_done", "data": {"name": section_state["title"]}})
 
-    persisted_sections = [*state["persisted_sections"], {
-        "title": section_state["title"],
-        "content": section_state["content"],
-        "order_index": order_index,
-    }]
+    persisted_sections = [
+        *state["persisted_sections"],
+        {
+            "title": section_state["title"],
+            "content": section_state["content"],
+            "order_index": order_index,
+        },
+    ]
 
     return {
         "persisted_sections": persisted_sections,
@@ -282,7 +305,8 @@ async def compile_proposal(state: ProposalGenerationState) -> dict[str, Any]:
 
     logger.info(
         "proposal generation completed | proposal_id=%s sections=%s",
-        state["proposal_id"], len(state["persisted_sections"]),
+        state["proposal_id"],
+        len(state["persisted_sections"]),
     )
 
     return {"markdown_path": s3_key}

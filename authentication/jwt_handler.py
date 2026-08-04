@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 
@@ -16,7 +16,7 @@ ISSUER = config.jwt.issuer
 # ------------------------------------------------------------------
 def _create_token(payload: dict, expires_delta: timedelta) -> str:
     data = payload.copy()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     data["iat"] = now
     data["exp"] = now + expires_delta
     data["iss"] = ISSUER

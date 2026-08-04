@@ -105,9 +105,7 @@ async def _assert_removable(db: AsyncSession, user: User, current_user_id: int, 
 
     if user.role == UserRole.ADMIN:
         admin_count = await db.scalar(
-            select(func.count()).select_from(User).filter(
-                User.role == UserRole.ADMIN, User.is_active.is_(True)
-            )
+            select(func.count()).select_from(User).filter(User.role == UserRole.ADMIN, User.is_active.is_(True))
         )
         if admin_count <= 1:
             raise HTTPException(
@@ -116,9 +114,7 @@ async def _assert_removable(db: AsyncSession, user: User, current_user_id: int, 
             )
 
 
-async def set_team_member_active(
-    db: AsyncSession, *, user_id: int, is_active: bool, current_user_id: int
-) -> User:
+async def set_team_member_active(db: AsyncSession, *, user_id: int, is_active: bool, current_user_id: int) -> User:
     """Activates or deactivates a member.
 
     Deactivating is the same state change as deleting (both set is_active =
@@ -141,7 +137,9 @@ async def set_team_member_active(
     user = await update_user(db, user, is_active=is_active)
     logger.info(
         "team member %s | user_id=%s email=%s",
-        "activated" if is_active else "deactivated", user.id, user.email,
+        "activated" if is_active else "deactivated",
+        user.id,
+        user.email,
     )
     return user
 

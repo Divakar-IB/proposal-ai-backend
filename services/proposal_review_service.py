@@ -1,15 +1,16 @@
 from datetime import datetime
-from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.crud import (
     build_proposals_query,
-    delete_proposal as delete_proposal_row,
     get_proposal_by_id,
     get_proposal_status_counts,
     update_proposal,
+)
+from database.crud import (
+    delete_proposal as delete_proposal_row,
 )
 from database.db_enum import ProposalStatus
 from database.models import Proposal
@@ -50,7 +51,9 @@ async def set_proposal_status(db: AsyncSession, proposal_id: int, new_status: Pr
 
     logger.info(
         "proposal status changed | proposal_id=%s from=%s to=%s",
-        proposal_id, proposal.status.value, new_status.value,
+        proposal_id,
+        proposal.status.value,
+        new_status.value,
     )
     return await update_proposal(db, proposal, status=new_status)
 
@@ -67,11 +70,11 @@ async def delete_proposal(db: AsyncSession, proposal_id: int) -> None:
 async def list_proposals(
     db: AsyncSession,
     *,
-    search: Optional[str] = None,
-    proposal_status: Optional[ProposalStatus] = None,
-    created_by: Optional[int] = None,
-    created_from: Optional[datetime] = None,
-    created_to: Optional[datetime] = None,
+    search: str | None = None,
+    proposal_status: ProposalStatus | None = None,
+    created_by: int | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
     page: int = 1,
     limit: int = 10,
 ) -> dict:
@@ -92,7 +95,7 @@ async def list_proposals(
     return await paginate(db, query, page=page, limit=limit)
 
 
-async def get_proposal_stats(db: AsyncSession, *, created_by: Optional[int] = None) -> dict:
+async def get_proposal_stats(db: AsyncSession, *, created_by: int | None = None) -> dict:
     """Dashboard counts: total active proposals plus one flat field per
     status. Statuses with no proposals still come back as 0 rather than
     being omitted, so callers don't need to guard against missing keys."""

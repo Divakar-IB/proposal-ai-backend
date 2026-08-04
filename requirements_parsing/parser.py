@@ -1,5 +1,4 @@
 import json
-from typing import Optional
 
 from openai import APIStatusError
 from pydantic import ValidationError
@@ -14,7 +13,7 @@ logger = get_logger(__name__)
 MAX_REPAIR_ATTEMPTS = 3
 
 
-def parse_requirements(markdown: str, additional_context: Optional[str] = None) -> RequirementsSchema:
+def parse_requirements(markdown: str, additional_context: str | None = None) -> RequirementsSchema:
     """GPT-OSS (via Groq) structured extraction, validated against RequirementsSchema.
     Retries with the validation error fed back as a repair instruction on failure."""
 
@@ -41,14 +40,16 @@ def parse_requirements(markdown: str, additional_context: Optional[str] = None) 
             # raises here rather than giving us malformed JSON to catch below.
             last_error = error
             logger.warning("requirements parse attempt %s: API rejected tool call: %s", attempt, error)
-            messages.append({
-                "role": "user",
-                "content": (
-                    f"Your previous tool call was rejected: {error}. Remember: array fields "
-                    "must be an empty array [] when nothing is found, never null. "
-                    "Call extract_requirements again with corrected arguments."
-                ),
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Your previous tool call was rejected: {error}. Remember: array fields "
+                        "must be an empty array [] when nothing is found, never null. "
+                        "Call extract_requirements again with corrected arguments."
+                    ),
+                }
+            )
             continue
 
         tool_calls = response.choices[0].message.tool_calls
@@ -65,12 +66,14 @@ def parse_requirements(markdown: str, additional_context: Optional[str] = None) 
             last_error = error
             logger.warning("requirements parse attempt %s failed validation: %s", attempt, error)
             messages.append({"role": "assistant", "content": raw_arguments})
-            messages.append({
-                "role": "user",
-                "content": (
-                    f"That output failed schema validation with error: {error}. "
-                    "Call extract_requirements again with corrected arguments matching the schema exactly."
-                ),
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"That output failed schema validation with error: {error}. "
+                        "Call extract_requirements again with corrected arguments matching the schema exactly."
+                    ),
+                }
+            )
 
     raise ValueError(f"Failed to parse requirements after {MAX_REPAIR_ATTEMPTS} attempts: {last_error}")

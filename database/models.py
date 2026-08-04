@@ -2,27 +2,27 @@ from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
+    Enum as SAEnum,
+)
+from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
     Text,
-    Enum as SAEnum,
     func,
 )
-from sqlalchemy import Enum as SAEnum
-
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.database import Base
 from database.db_enum import (
-    UserRole,
-    IngestionStatus,
-    DocumentStatus,
     DocumentAvailability,
-    ProposalStatus,
-    ProposalSectionStatus,
+    DocumentStatus,
     GenerationMode,
+    IngestionStatus,
+    ProposalSectionStatus,
+    ProposalStatus,
+    UserRole,
 )
 
 
@@ -40,14 +40,12 @@ class User(BasicModel):
 
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
-    role: Mapped[UserRole] = mapped_column(
-        SAEnum(UserRole, name="userrole"), nullable=False, default=UserRole.USER
-    )
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole, name="userrole"), nullable=False, default=UserRole.USER)
     is_first_login: Mapped[bool] = mapped_column(default=True)
-    otp_code: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    otp_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    designation: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    otp_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    otp_expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    designation: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     knowledge_documents: Mapped[list["KnowledgeDocument"]] = relationship(back_populates="uploader")
     requirement_documents: Mapped[list["RequirementDocument"]] = relationship(back_populates="uploader")
@@ -57,7 +55,7 @@ class Category(BasicModel):
     __tablename__ = "categories"
 
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     knowledge_document: Mapped[list["KnowledgeDocument"]] = relationship(back_populates="category")
 
@@ -66,14 +64,14 @@ class KnowledgeDocument(BasicModel):
     __tablename__ = "knowledge_documents"
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     extension: Mapped[str] = mapped_column(String(20), nullable=False)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     version: Mapped[int] = mapped_column(default=1)
-    tags: Mapped[Optional[list[str]]] = mapped_column(ARRAY(String), nullable=True)
+    tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     status: Mapped[IngestionStatus] = mapped_column(
         SAEnum(IngestionStatus), nullable=False, default=IngestionStatus.PENDING
     )
@@ -82,20 +80,16 @@ class KnowledgeDocument(BasicModel):
         nullable=False,
         default=DocumentAvailability.ACTIVE,
     )
-    extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    extracted_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Set only for documents auto-ingested from an approved proposal (see
     # services.proposal_knowledge_service); NULL means a manual upload. The
     # unique constraint is what keeps one proposal to at most one document,
     # so re-approving re-indexes instead of duplicating.
-    source_proposal_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("proposals.id"), nullable=True, unique=True
-    )
+    source_proposal_id: Mapped[int | None] = mapped_column(ForeignKey("proposals.id"), nullable=True, unique=True)
 
     category: Mapped["Category"] = relationship(back_populates="knowledge_document", lazy="selectin")
     uploader: Mapped["User"] = relationship(back_populates="knowledge_documents")
-    chunks: Mapped[list["KnowledgeChunk"]] = relationship(
-        back_populates="document", cascade="all, delete-orphan"
-    )
+    chunks: Mapped[list["KnowledgeChunk"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
 
 class KnowledgeChunk(BasicModel):
@@ -103,9 +97,7 @@ class KnowledgeChunk(BasicModel):
 
     __tablename__ = "knowledge_chunks"
 
-    knowledge_document_id: Mapped[int] = mapped_column(
-        ForeignKey("knowledge_documents.id"), nullable=False, index=True
-    )
+    knowledge_document_id: Mapped[int] = mapped_column(ForeignKey("knowledge_documents.id"), nullable=False, index=True)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     breadcrumb: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -122,17 +114,15 @@ class RequirementDocument(BasicModel):
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     extension: Mapped[str] = mapped_column(String(20), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    proposal_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("proposals.id"), nullable=True, index=True
-    )
+    proposal_id: Mapped[int | None] = mapped_column(ForeignKey("proposals.id"), nullable=True, index=True)
     status: Mapped[DocumentStatus] = mapped_column(
         SAEnum(DocumentStatus), nullable=False, default=DocumentStatus.UPLOADING
     )
-    extracted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    parsed_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    capability_tags: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
-    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    knowledge_matches: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
+    extracted_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parsed_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    capability_tags: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    knowledge_matches: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
 
     uploader: Mapped["User"] = relationship(back_populates="requirement_documents")
     proposal: Mapped[Optional["Proposal"]] = relationship(back_populates="requirement_documents")
@@ -144,16 +134,14 @@ class Proposal(BasicModel):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     client_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    additional_context: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    additional_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[ProposalStatus] = mapped_column(
         SAEnum(ProposalStatus), nullable=False, default=ProposalStatus.INPROGRESS
     )
-    generation_mode: Mapped[Optional[GenerationMode]] = mapped_column(
-        SAEnum(GenerationMode), nullable=True
-    )
-    page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    markdown_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    generation_mode: Mapped[GenerationMode | None] = mapped_column(SAEnum(GenerationMode), nullable=True)
+    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    markdown_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     requirement_documents: Mapped[list["RequirementDocument"]] = relationship(
         back_populates="proposal", order_by="RequirementDocument.created_at", lazy="selectin"
@@ -173,8 +161,8 @@ class ProposalSection(BasicModel):
     section_key: Mapped[str] = mapped_column(String(100), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    citations: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    citations: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[ProposalSectionStatus] = mapped_column(
         SAEnum(ProposalSectionStatus), nullable=False, default=ProposalSectionStatus.PENDING
     )
@@ -189,9 +177,9 @@ class OrganizationSettings(BasicModel):
 
     __tablename__ = "organization_settings"
 
-    organization_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    default_signee_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    default_signee_designation: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    logo_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    proposal_naming_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    organization_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    default_signee_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    default_signee_designation: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    logo_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    proposal_naming_template: Mapped[str | None] = mapped_column(Text, nullable=True)

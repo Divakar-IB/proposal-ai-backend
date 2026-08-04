@@ -20,9 +20,7 @@ def split_by_headers(markdown: str) -> list[tuple[str, str]]:
         if not content:
             continue
 
-        breadcrumb_parts = [
-            doc.metadata[key] for key in ("h1", "h2", "h3") if doc.metadata.get(key)
-        ]
+        breadcrumb_parts = [doc.metadata[key] for key in ("h1", "h2", "h3") if doc.metadata.get(key)]
         breadcrumb = " > ".join(breadcrumb_parts)
         sections.append((content, breadcrumb))
 

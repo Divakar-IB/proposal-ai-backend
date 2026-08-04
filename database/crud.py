@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,9 +25,7 @@ async def get_active_categories(db: AsyncSession) -> list[Category]:
 
 
 async def get_category_by_name(db: AsyncSession, name: str) -> Category | None:
-    result = await db.execute(
-        select(Category).filter(Category.name == name, Category.is_active.is_(True))
-    )
+    result = await db.execute(select(Category).filter(Category.name == name, Category.is_active.is_(True)))
     return result.scalars().first()
 
 
@@ -42,9 +40,7 @@ async def get_category_by_name_including_deleted(db: AsyncSession, name: str) ->
 
 
 async def get_category_by_id(db: AsyncSession, category_id: int) -> Category | None:
-    result = await db.execute(
-        select(Category).filter(Category.id == category_id, Category.is_active.is_(True))
-    )
+    result = await db.execute(select(Category).filter(Category.id == category_id, Category.is_active.is_(True)))
     return result.scalars().first()
 
 
@@ -63,7 +59,7 @@ async def deactivate_category(db: AsyncSession, category: Category) -> None:
     await db.commit()
 
 
-async def reactivate_category(db: AsyncSession, category: Category, description: Optional[str] = None) -> Category:
+async def reactivate_category(db: AsyncSession, category: Category, description: str | None = None) -> Category:
     """Brings a soft-deleted category back rather than inserting a second row
     with the same (UNIQUE) name."""
 
@@ -186,30 +182,24 @@ async def clear_user_otp(db: AsyncSession, user: User) -> User:
 
 async def get_knowledge_document_by_id(db: AsyncSession, document_id: int) -> KnowledgeDocument | None:
     result = await db.execute(
-        select(KnowledgeDocument).filter(
-            KnowledgeDocument.id == document_id, KnowledgeDocument.is_active.is_(True)
-        )
+        select(KnowledgeDocument).filter(KnowledgeDocument.id == document_id, KnowledgeDocument.is_active.is_(True))
     )
     return result.scalars().first()
 
 
-async def get_knowledge_documents_by_ids(
-    db: AsyncSession, document_ids: list[int]
-) -> list[KnowledgeDocument]:
+async def get_knowledge_documents_by_ids(db: AsyncSession, document_ids: list[int]) -> list[KnowledgeDocument]:
     if not document_ids:
         return []
     result = await db.execute(
-        select(KnowledgeDocument).filter(
-            KnowledgeDocument.id.in_(document_ids), KnowledgeDocument.is_active.is_(True)
-        )
+        select(KnowledgeDocument).filter(KnowledgeDocument.id.in_(document_ids), KnowledgeDocument.is_active.is_(True))
     )
     return list(result.scalars().all())
 
 
 def build_knowledge_documents_query(
-    category_id: Optional[int] = None,
-    search: Optional[str] = None,
-    knowledge_status: Optional[DocumentAvailability] = None,
+    category_id: int | None = None,
+    search: str | None = None,
+    knowledge_status: DocumentAvailability | None = None,
     include_generated: bool = False,
 ) -> Select:
     """`include_generated=False` (the default) hides documents that were
@@ -274,6 +264,7 @@ async def create_knowledge_chunks(db: AsyncSession, chunks: list[KnowledgeChunk]
 # RequirementDocument
 # ------------------------------------------------------------------
 
+
 async def get_requirement_document_by_id(db: AsyncSession, document_id: int) -> RequirementDocument | None:
     result = await db.execute(
         select(RequirementDocument).filter(
@@ -290,9 +281,7 @@ async def create_requirement_document(db: AsyncSession, document: RequirementDoc
     return document
 
 
-async def get_requirement_documents_by_proposal_id(
-    db: AsyncSession, proposal_id: int
-) -> list[RequirementDocument]:
+async def get_requirement_documents_by_proposal_id(db: AsyncSession, proposal_id: int) -> list[RequirementDocument]:
     result = await db.execute(
         select(RequirementDocument)
         .filter(
@@ -304,9 +293,7 @@ async def get_requirement_documents_by_proposal_id(
     return list(result.scalars().all())
 
 
-async def update_requirement_document(
-    db: AsyncSession, document: RequirementDocument, **fields
-) -> RequirementDocument:
+async def update_requirement_document(db: AsyncSession, document: RequirementDocument, **fields) -> RequirementDocument:
     for key, value in fields.items():
         setattr(document, key, value)
     await db.commit()
@@ -350,17 +337,13 @@ async def get_proposal_by_id(db: AsyncSession, proposal_id: int) -> Proposal | N
 
 
 def build_proposals_query(
-    search: Optional[str] = None,
-    proposal_status: Optional[ProposalStatus] = None,
-    created_by: Optional[int] = None,
-    created_from: Optional[datetime] = None,
-    created_to: Optional[datetime] = None,
+    search: str | None = None,
+    proposal_status: ProposalStatus | None = None,
+    created_by: int | None = None,
+    created_from: datetime | None = None,
+    created_to: datetime | None = None,
 ) -> Select:
-    query = (
-        select(Proposal)
-        .options(_REQUIREMENT_DOCUMENT_IDS_ONLY)
-        .filter(Proposal.is_active.is_(True))
-    )
+    query = select(Proposal).options(_REQUIREMENT_DOCUMENT_IDS_ONLY).filter(Proposal.is_active.is_(True))
     if search:
         pattern = f"%{search}%"
         query = query.filter(or_(Proposal.title.ilike(pattern), Proposal.client_name.ilike(pattern)))
@@ -375,13 +358,9 @@ def build_proposals_query(
     return query.order_by(Proposal.created_at.desc())
 
 
-async def get_proposal_status_counts(
-    db: AsyncSession, *, created_by: Optional[int] = None
-) -> dict[ProposalStatus, int]:
+async def get_proposal_status_counts(db: AsyncSession, *, created_by: int | None = None) -> dict[ProposalStatus, int]:
     query = (
-        select(Proposal.status, func.count(Proposal.id))
-        .filter(Proposal.is_active.is_(True))
-        .group_by(Proposal.status)
+        select(Proposal.status, func.count(Proposal.id)).filter(Proposal.is_active.is_(True)).group_by(Proposal.status)
     )
     if created_by is not None:
         query = query.filter(Proposal.user_id == created_by)
@@ -402,9 +381,7 @@ async def delete_proposal(db: AsyncSession, proposal: Proposal) -> None:
     await db.commit()
 
 
-async def create_proposal_sections(
-    db: AsyncSession, sections: list[ProposalSection]
-) -> list[ProposalSection]:
+async def create_proposal_sections(db: AsyncSession, sections: list[ProposalSection]) -> list[ProposalSection]:
     db.add_all(sections)
     await db.commit()
     return sections
@@ -420,9 +397,7 @@ async def delete_proposal_sections_for_proposal(db: AsyncSession, proposal_id: i
     await db.commit()
 
 
-async def update_proposal_section(
-    db: AsyncSession, section: ProposalSection, **fields: Any
-) -> ProposalSection:
+async def update_proposal_section(db: AsyncSession, section: ProposalSection, **fields: Any) -> ProposalSection:
     for key, value in fields.items():
         setattr(section, key, value)
     await db.commit()
@@ -439,24 +414,18 @@ async def get_proposal_section_by_id(db: AsyncSession, section_id: int) -> Propo
 
 async def get_proposal_sections_by_ids(db: AsyncSession, section_ids: list[int]) -> list[ProposalSection]:
     result = await db.execute(
-        select(ProposalSection).filter(
-            ProposalSection.id.in_(section_ids), ProposalSection.is_active.is_(True)
-        )
+        select(ProposalSection).filter(ProposalSection.id.in_(section_ids), ProposalSection.is_active.is_(True))
     )
     return list(result.scalars().all())
 
 
 # OrganizationSettings — single-row table, no id-based lookup needed
 async def get_organization_settings(db: AsyncSession) -> OrganizationSettings | None:
-    result = await db.execute(
-        select(OrganizationSettings).filter(OrganizationSettings.is_active.is_(True)).limit(1)
-    )
+    result = await db.execute(select(OrganizationSettings).filter(OrganizationSettings.is_active.is_(True)).limit(1))
     return result.scalars().first()
 
 
-async def create_organization_settings(
-    db: AsyncSession, settings: OrganizationSettings
-) -> OrganizationSettings:
+async def create_organization_settings(db: AsyncSession, settings: OrganizationSettings) -> OrganizationSettings:
     db.add(settings)
     await db.commit()
     await db.refresh(settings)
@@ -471,5 +440,3 @@ async def update_organization_settings(
     await db.commit()
     await db.refresh(settings)
     return settings
-
-

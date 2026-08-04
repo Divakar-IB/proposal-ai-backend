@@ -1,4 +1,5 @@
-from typing import Any, Iterator, Optional
+from collections.abc import Iterator
+from typing import Any
 
 from openai import OpenAI
 
@@ -24,8 +25,8 @@ class GroqChatClient:
     def complete(
         cls,
         messages: list[dict[str, str]],
-        tools: Optional[list[dict[str, Any]]] = None,
-        tool_choice: Optional[dict[str, Any]] = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: dict[str, Any] | None = None,
         temperature: float = 0.2,
     ):
         client = cls.get_client()

@@ -21,7 +21,7 @@ IMAGE_COVERAGE_THRESHOLD = 0.6
 # underlines are usually drawn vector lines, not a font property), so
 # underline_ratio is always 0.0 for the PDF path — bold/size/numbering/caps
 # carry the detection here.
-_BOLD_FLAG = 2 ** 4
+_BOLD_FLAG = 2**4
 
 
 class PDFExtractor(BaseExtractor):
@@ -46,11 +46,13 @@ class PDFExtractor(BaseExtractor):
                     markdown = self._extract_page_text(page, body_size)
                     method = ExtractionMethod.PYMUPDF_TEXT
 
-                pages.append(ExtractedPage(
-                    page_number=page_number,
-                    markdown=markdown,
-                    extraction_method=method,
-                ))
+                pages.append(
+                    ExtractedPage(
+                        page_number=page_number,
+                        markdown=markdown,
+                        extraction_method=method,
+                    )
+                )
         finally:
             doc.close()
 
@@ -83,7 +85,6 @@ class PDFExtractor(BaseExtractor):
             covered += max(0.0, x1 - x0) * max(0.0, y1 - y0)
 
         return min(covered / page_area, 1.0)
-
 
     def _estimate_body_font_size(self, doc: "fitz.Document") -> float:
         """Body text is assumed to be the most common font size across the
@@ -120,7 +121,7 @@ class PDFExtractor(BaseExtractor):
         # (sort_key, markdown) so tables and prose can be interleaved in
         # reading order regardless of which pass produced them.
         items: list[tuple[float, float, str]] = []
-        table_rects: list["fitz.Rect"] = []
+        table_rects: list[fitz.Rect] = []
 
         for rect, markdown in tables:
             table_rects.append(rect)
@@ -159,7 +160,7 @@ class PDFExtractor(BaseExtractor):
             logger.exception("table detection failed | page=%s", page.number + 1)
             return []
 
-        found: list[tuple["fitz.Rect", str]] = []
+        found: list[tuple[fitz.Rect, str]] = []
         for table in getattr(finder, "tables", []):
             try:
                 # min_rows=2: a single detected row is nearly always a false
@@ -191,17 +192,17 @@ class PDFExtractor(BaseExtractor):
 
     def _render_line(self, text: str, spans: list[dict], body_size: float) -> str:
         total_chars = sum(len(span.get("text", "")) for span in spans)
-        bold_chars = sum(
-            len(span.get("text", "")) for span in spans if span.get("flags", 0) & _BOLD_FLAG
-        )
+        bold_chars = sum(len(span.get("text", "")) for span in spans if span.get("flags", 0) & _BOLD_FLAG)
         max_size = max((span.get("size", body_size) for span in spans), default=body_size)
 
-        prefix = classify_heading(LineFeatures(
-            text=text,
-            size=max_size,
-            body_size=body_size,
-            bold_ratio=bold_chars / total_chars if total_chars else 0.0,
-        ))
+        prefix = classify_heading(
+            LineFeatures(
+                text=text,
+                size=max_size,
+                body_size=body_size,
+                bold_ratio=bold_chars / total_chars if total_chars else 0.0,
+            )
+        )
         return f"{prefix} {text}" if prefix else text
 
     # ------------------------------------------------------------------
