@@ -24,7 +24,9 @@ async def test_postgres_only_columns_round_trip(factory, db):
     category = await factory.category()
     document = await factory.knowledge_document(user=user, category=category, tags=["a", "b"])
     proposal = await factory.proposal(user=user)
-    requirement = await factory.requirement_document(user=user, proposal=proposal, parsed_data={"project_title": "X"})
+    requirement = await factory.requirement_document(
+        user=user, proposal=proposal, parsed_data={"project_title": "X"}
+    )
 
     await db.refresh(document)
     await db.refresh(requirement)

@@ -19,7 +19,7 @@ Request body — `ProposalGenerateRequest` (`schemas/proposal.py:15-18`):
 class ProposalGenerateRequest(BaseModel):
     proposal_id: int
     page_count: int
-    generation_mode: GenerationMode  # "llm_only" | "knowledge_augmented"
+    generation_mode: GenerationMode   # "llm_only" | "knowledge_augmented"
 ```
 No field for selecting specific requirement documents or section titles — the endpoint loads **all** requirement documents already attached to `proposal_id`, and section titles/order come from a hardcoded `SECTION_DEFINITIONS` list, not client input. Client name / additional context / proposal title were already captured earlier at requirement-document upload time (see [requirement-document-flow.md](requirement-document-flow.md)).
 

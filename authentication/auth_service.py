@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,18 +20,18 @@ from database.crud import (
 )
 from database.models import User
 from schemas.auth import (
-    CreateUserRequest,
-    CreateUserResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
-    LoginRequest,
-    LoginResponse,
     NewPasswordRequest,
     NewPasswordResponse,
-    RegisterRequest,
-    RegisterResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
+    CreateUserRequest,
+    CreateUserResponse,
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    RegisterResponse,
     VerifyOtpRequest,
     VerifyOtpResponse,
 )
@@ -125,7 +125,7 @@ async def forgot_password(
     # Always return a generic response so callers can't enumerate registered emails.
     if user is not None and user.is_active:
         otp = generate_otp()
-        expires_at = datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=OTP_EXPIRE_MINUTES)
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=OTP_EXPIRE_MINUTES)
         await set_user_otp(db, user, hash_password(otp), expires_at)
         try:
             await send_otp_email(user.email, otp, OTP_EXPIRE_MINUTES)
@@ -149,7 +149,7 @@ def _check_otp(user: User | None, otp: str) -> None:
     if user is None or not user.is_active or user.otp_code is None or user.otp_expires_at is None:
         raise invalid_otp_error
 
-    if datetime.now(UTC).replace(tzinfo=None) > user.otp_expires_at:
+    if datetime.now(timezone.utc).replace(tzinfo=None) > user.otp_expires_at:
         raise invalid_otp_error
 
     if not verify_password(otp, user.otp_code):

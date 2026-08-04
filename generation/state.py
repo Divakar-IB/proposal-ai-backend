@@ -1,16 +1,16 @@
-from typing import Any, TypedDict
+from typing import Any, Optional, TypedDict
 
 
 class SectionState(TypedDict):
     key: str
     title: str
     query_fields: str
-    drafting_note: str | None
+    drafting_note: Optional[str]
     retrieved_chunks: list[dict[str, Any]]
-    content: str | None
+    content: Optional[str]
     citations: list[dict[str, Any]]
     status: str  # ProposalSectionStatus value
-    feedback: str | None
+    feedback: Optional[str]
 
 
 class ProposalGenerationState(TypedDict):
@@ -20,7 +20,7 @@ class ProposalGenerationState(TypedDict):
     requirements: dict[str, Any]
     sections: list[SectionState]
     max_retries: int
-    error: str | None
+    error: Optional[str]
 
     # Working fields used by generation/graph.py's node functions.
     page_count: int
@@ -28,12 +28,12 @@ class ProposalGenerationState(TypedDict):
     requirements_json: str
     proposal_title: str
     client_name: str
-    additional_context: str | None
+    additional_context: Optional[str]
     # section key -> word budget for that section, summing to the requested
     # page_count's word budget (see generation/length_budget.py).
     word_targets: dict[str, int]
     has_knowledge: bool
     current_section_index: int
-    current_section: SectionState | None
+    current_section: Optional[SectionState]
     persisted_sections: list[dict[str, Any]]  # {title, content, order_index}
-    markdown_path: str | None
+    markdown_path: Optional[str]

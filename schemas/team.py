@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, EmailStr
 
@@ -18,7 +19,7 @@ class InviteTeamMemberResponse(BaseModel):
 
 class TeamMemberResponse(BaseModel):
     id: int
-    name: str | None = None
+    name: Optional[str] = None
     email: EmailStr
     role: UserRole
     status: str

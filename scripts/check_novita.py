@@ -111,7 +111,7 @@ def check_stream(client: httpx.Client, model: str) -> bool:
         for line in response.iter_lines():
             if not line.startswith("data: "):
                 continue
-            payload = line[len("data: ") :].strip()
+            payload = line[len("data: "):].strip()
             if payload == "[DONE]":
                 break
             delta = json.loads(payload)["choices"][0].get("delta", {}).get("content")
@@ -133,7 +133,9 @@ def main() -> int:
     print(f"base_url = {BASE_URL}")
     print(f"key      = {api_key[:6]}...{api_key[-4:]} ({len(api_key)} chars)\n")
 
-    with httpx.Client(timeout=TIMEOUT, headers={"Authorization": f"Bearer {api_key}"}) as client:
+    with httpx.Client(
+        timeout=TIMEOUT, headers={"Authorization": f"Bearer {api_key}"}
+    ) as client:
         available = check_models(client)
         if not available:
             print("\nRESULT: key did NOT authenticate — nothing else worth trying.")
@@ -147,7 +149,8 @@ def main() -> int:
 
         print()
         if not check_completion(client, model):
-            print("\nRESULT: key authenticates, but this model could not complete. Try another id from the list above.")
+            print("\nRESULT: key authenticates, but this model could not complete. "
+                  "Try another id from the list above.")
             return 1
 
         print()

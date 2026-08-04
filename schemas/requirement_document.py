@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -26,9 +27,9 @@ class RequirementDocumentResponse(BaseModel):
     user_id: int
     proposal_name: str
     client_name: str
-    additional_context: str | None = None
+    additional_context: Optional[str] = None
     status: DocumentStatus
-    summary: str | None = None
+    summary: Optional[str] = None
     knowledge_matches: list[KnowledgeMatch] = []
     capability_tags: list[CapabilityTagOut] = []
     created_at: datetime

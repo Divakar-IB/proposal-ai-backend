@@ -1,16 +1,17 @@
+from typing import Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.crud import get_knowledge_documents_by_ids
 from database.models import KnowledgeDocument
 
 
-def _is_proposal_sourced(document: KnowledgeDocument | None) -> bool:
+def _is_proposal_sourced(document: Optional[KnowledgeDocument]) -> bool:
     """A KnowledgeDocument carries source_proposal_id only when it was
     auto-ingested from an approved proposal (see
     services.proposal_knowledge_service); a manual upload leaves it NULL."""
 
     return document is not None and document.source_proposal_id is not None
-
 
 # Retrieval fetches this multiple of the caller's requested top_k from
 # Pinecone, so that after excluding proposal-derived chunks by default (see
@@ -30,7 +31,7 @@ async def resolve_and_filter_chunks(
     chunks: list[dict],
     top_k: int,
     include_proposal_sources: bool = False,
-) -> list[tuple[dict, KnowledgeDocument | None]]:
+) -> list[tuple[dict, Optional[KnowledgeDocument]]]:
     """Resolves each retrieved chunk's source KnowledgeDocument with one
     batched lookup (not one query per chunk — this runs per proposal-
     generation section, so N+1 here would scale badly across thousands of
@@ -53,7 +54,7 @@ async def resolve_and_filter_chunks(
     documents = await get_knowledge_documents_by_ids(db, list(document_ids))
     document_by_id = {document.id: document for document in documents}
 
-    resolved: list[tuple[dict, KnowledgeDocument | None]] = []
+    resolved: list[tuple[dict, Optional[KnowledgeDocument]]] = []
     for chunk in chunks:
         document = document_by_id.get(chunk.get("document_id"))
         if _is_proposal_sourced(document) and not include_proposal_sources:
@@ -65,7 +66,7 @@ async def resolve_and_filter_chunks(
     return resolved
 
 
-def _section_name_from_breadcrumb(breadcrumb: str, proposal_title: str) -> str | None:
+def _section_name_from_breadcrumb(breadcrumb: str, proposal_title: str) -> Optional[str]:
     """breadcrumb for a proposal-derived chunk looks like
     "Generated Proposals > {proposal_title} > {section_title}[ > {subsection}]"
     (see services.proposal_knowledge_service and chunking/pipeline.py) — the
@@ -80,7 +81,7 @@ def _section_name_from_breadcrumb(breadcrumb: str, proposal_title: str) -> str |
     return parts[-1] if parts else None
 
 
-def label_knowledge_match(chunk: dict, document: KnowledgeDocument | None) -> dict:
+def label_knowledge_match(chunk: dict, document: Optional[KnowledgeDocument]) -> dict:
     """Shapes one requirement-document knowledge-match entry (see
     tasks.requirement_processing._compute_knowledge_matches), keeping every
     existing field populated (document_id/title/source_filename/breadcrumb/
@@ -98,19 +99,17 @@ def label_knowledge_match(chunk: dict, document: KnowledgeDocument | None) -> di
     }
 
     if _is_proposal_sourced(document):
-        match.update(
-            {
-                "type": "proposal",
-                "proposal_id": document.source_proposal_id,
-                "proposal_name": document.title,
-                "section_name": _section_name_from_breadcrumb(chunk.get("breadcrumb", ""), document.title),
-            }
-        )
+        match.update({
+            "type": "proposal",
+            "proposal_id": document.source_proposal_id,
+            "proposal_name": document.title,
+            "section_name": _section_name_from_breadcrumb(chunk.get("breadcrumb", ""), document.title),
+        })
 
     return match
 
 
-def label_section_citation(chunk: dict, document: KnowledgeDocument | None) -> dict:
+def label_section_citation(chunk: dict, document: Optional[KnowledgeDocument]) -> dict:
     """Shapes one proposal-generation section citation (see
     generation.nodes.section_citations) — same additive-fields approach as
     label_knowledge_match."""
@@ -122,13 +121,11 @@ def label_section_citation(chunk: dict, document: KnowledgeDocument | None) -> d
     }
 
     if _is_proposal_sourced(document):
-        citation.update(
-            {
-                "type": "proposal",
-                "proposal_id": document.source_proposal_id,
-                "proposal_name": document.title,
-                "section_name": _section_name_from_breadcrumb(chunk.get("breadcrumb", ""), document.title),
-            }
-        )
+        citation.update({
+            "type": "proposal",
+            "proposal_id": document.source_proposal_id,
+            "proposal_name": document.title,
+            "section_name": _section_name_from_breadcrumb(chunk.get("breadcrumb", ""), document.title),
+        })
 
     return citation

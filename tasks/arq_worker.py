@@ -32,7 +32,9 @@ async def requirement_document_job(ctx, document_id: int) -> None:
     await process_requirement_document(document_id)
 
 
-async def proposal_generation_job(ctx, proposal_id: int, page_count: int, generation_mode: GenerationMode) -> None:
+async def proposal_generation_job(
+    ctx, proposal_id: int, page_count: int, generation_mode: GenerationMode
+) -> None:
     await generate_proposal(proposal_id, page_count, generation_mode)
 
 

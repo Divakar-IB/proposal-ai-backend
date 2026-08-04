@@ -6,15 +6,17 @@ from helpers import auth_headers
 
 from database.db_enum import DocumentStatus, GenerationMode, ProposalStatus
 
+
 # ------------------------------------------------------------------
 # GET /proposal/{proposal_id}/state
 # ------------------------------------------------------------------
 
-
 async def test_proposal_state_starts_at_proposal_details(client, member, factory):
     proposal = await factory.proposal(user=member, title="Wizard", client_name="Acme")
 
-    response = await client.get(f"/proposal/{proposal.id}/state", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal/{proposal.id}/state", headers=auth_headers(member)
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -29,9 +31,13 @@ async def test_proposal_state_starts_at_proposal_details(client, member, factory
 
 async def test_proposal_state_moves_to_summary_once_a_file_is_parsed(client, member, factory):
     proposal = await factory.proposal(user=member)
-    await factory.requirement_document(user=member, proposal=proposal, summary="Client needs a portal")
+    await factory.requirement_document(
+        user=member, proposal=proposal, summary="Client needs a portal"
+    )
 
-    response = await client.get(f"/proposal/{proposal.id}/state", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal/{proposal.id}/state", headers=auth_headers(member)
+    )
 
     body = response.json()
     assert body["current_step"] == "generation_config"
@@ -44,9 +50,13 @@ async def test_proposal_state_reports_summary_step_while_parsing(client, member,
     on the summary step."""
 
     proposal = await factory.proposal(user=member)
-    await factory.requirement_document(user=member, proposal=proposal, status=DocumentStatus.EXTRACTING, summary=None)
+    await factory.requirement_document(
+        user=member, proposal=proposal, status=DocumentStatus.EXTRACTING, summary=None
+    )
 
-    response = await client.get(f"/proposal/{proposal.id}/state", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal/{proposal.id}/state", headers=auth_headers(member)
+    )
 
     assert response.json()["current_step"] == "summary"
     assert response.json()["summary"] is None
@@ -61,7 +71,9 @@ async def test_proposal_state_reaches_generation_once_a_mode_is_set(client, memb
     )
     await factory.requirement_document(user=member, proposal=proposal, summary="A summary")
 
-    response = await client.get(f"/proposal/{proposal.id}/state", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal/{proposal.id}/state", headers=auth_headers(member)
+    )
 
     body = response.json()
     assert body["current_step"] == "generation"
@@ -81,7 +93,9 @@ async def test_proposal_state_collapses_review_and_done_to_done(client, member, 
     )
     await factory.requirement_document(user=member, proposal=proposal, summary="A summary")
 
-    response = await client.get(f"/proposal/{proposal.id}/state", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal/{proposal.id}/state", headers=auth_headers(member)
+    )
 
     assert response.json()["generation"] == {"status": "done"}
 
@@ -95,7 +109,9 @@ async def test_proposal_state_reports_a_failed_generation(client, member, factor
     )
     await factory.requirement_document(user=member, proposal=proposal, summary="A summary")
 
-    response = await client.get(f"/proposal/{proposal.id}/state", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal/{proposal.id}/state", headers=auth_headers(member)
+    )
 
     assert response.json()["generation"] == {"status": "failed"}
 
@@ -136,7 +152,9 @@ async def test_proposal_state_combines_several_files(client, member, factory):
         ],
     )
 
-    response = await client.get(f"/proposal/{proposal.id}/state", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal/{proposal.id}/state", headers=auth_headers(member)
+    )
 
     summary = response.json()["summary"]
     assert "First summary" in summary["summary"]
@@ -180,14 +198,15 @@ async def test_proposal_state_requires_a_token(client, member, factory):
 # GET /proposal/{proposal_id}/sections
 # ------------------------------------------------------------------
 
-
 async def test_get_proposal_sections_in_order(client, member, factory):
     proposal = await factory.proposal(user=member, title="Reviewable", client_name="Acme")
     await factory.section(proposal=proposal, title="Third", order_index=2)
     await factory.section(proposal=proposal, title="First", order_index=0)
     await factory.section(proposal=proposal, title="Second", order_index=1)
 
-    response = await client.get(f"/proposal/{proposal.id}/sections", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal/{proposal.id}/sections", headers=auth_headers(member)
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -200,7 +219,9 @@ async def test_get_proposal_sections_in_order(client, member, factory):
 async def test_get_proposal_sections_is_empty_for_an_ungenerated_proposal(client, member, factory):
     proposal = await factory.proposal(user=member)
 
-    response = await client.get(f"/proposal/{proposal.id}/sections", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal/{proposal.id}/sections", headers=auth_headers(member)
+    )
 
     assert response.status_code == 200
     assert response.json()["sections"] == []
@@ -220,7 +241,6 @@ async def test_get_proposal_sections_requires_a_token(client, member, factory):
 # ------------------------------------------------------------------
 # PATCH /proposal/{proposal_id}/sections
 # ------------------------------------------------------------------
-
 
 async def test_reorder_sections(client, member, factory):
     proposal = await factory.proposal(user=member)
@@ -314,14 +334,18 @@ async def test_reorder_validates_nothing_before_rejecting(client, member, factor
 
 
 async def test_reorder_404s_for_an_unknown_proposal(client, member_headers):
-    response = await client.patch("/proposal/999999/sections", headers=member_headers, json={"sections": []})
+    response = await client.patch(
+        "/proposal/999999/sections", headers=member_headers, json={"sections": []}
+    )
     assert response.status_code == 404
 
 
 async def test_reorder_requires_the_sections_key(client, member, factory):
     proposal = await factory.proposal(user=member)
 
-    response = await client.patch(f"/proposal/{proposal.id}/sections", headers=auth_headers(member), json={})
+    response = await client.patch(
+        f"/proposal/{proposal.id}/sections", headers=auth_headers(member), json={}
+    )
 
     assert response.status_code == 422
 
@@ -329,6 +353,8 @@ async def test_reorder_requires_the_sections_key(client, member, factory):
 async def test_reorder_requires_a_token(client, member, factory):
     proposal = await factory.proposal(user=member)
 
-    response = await client.patch(f"/proposal/{proposal.id}/sections", json={"sections": []})
+    response = await client.patch(
+        f"/proposal/{proposal.id}/sections", json={"sections": []}
+    )
 
     assert response.status_code == 401

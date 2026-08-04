@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -65,5 +66,5 @@ PROPOSAL_TEMPLATES: dict[int, TemplateDefinition] = {
 }
 
 
-def get_template(template_id: int) -> TemplateDefinition | None:
+def get_template(template_id: int) -> Optional[TemplateDefinition]:
     return PROPOSAL_TEMPLATES.get(template_id)

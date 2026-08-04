@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -32,8 +32,8 @@ class ProposalSectionResponse(BaseModel):
     section_key: str
     title: str
     order_index: int
-    content: str | None = None
-    sources: list[dict[str, Any]] | None = None
+    content: Optional[str] = None
+    sources: Optional[list[dict[str, Any]]] = None
     status: ProposalSectionStatus
 
     class Config:
@@ -46,12 +46,12 @@ class ProposalResponse(BaseModel):
     user_id: int
     title: str
     client_name: str
-    additional_context: str | None = None
-    generation_mode: GenerationMode | None = None
-    page_count: int | None = None
+    additional_context: Optional[str] = None
+    generation_mode: Optional[GenerationMode] = None
+    page_count: Optional[int] = None
     status: ProposalStatus
-    markdown_path: str | None = None
-    error_message: str | None = None
+    markdown_path: Optional[str] = None
+    error_message: Optional[str] = None
     sections: list[ProposalSectionResponse] = []
     created_at: datetime
 
@@ -104,7 +104,7 @@ class ProposalExportEmailResponse(BaseModel):
 class ProposalSectionMinimal(BaseModel):
     id: int
     title: str
-    content: str | None = None
+    content: Optional[str] = None
     order: int
 
     class Config:
@@ -135,13 +135,13 @@ class ExportTemplateResponse(BaseModel):
     id: int
     name: str
     description: str
-    preview_url: str | None = None
+    preview_url: Optional[str] = None
 
 
 class ProposalDetailsStep(BaseModel):
     proposal_name: str
     client_name: str
-    additional_context: str | None = None
+    additional_context: Optional[str] = None
     files: list[RequirementDocumentResponse] = []
 
 
@@ -153,7 +153,7 @@ class FileSummary(BaseModel):
     document_id: int
     file_name: str
     status: DocumentStatus
-    summary: str | None = None
+    summary: Optional[str] = None
     knowledge_matches: list[KnowledgeMatch] = []
     capability_tags: list[CapabilityTagOut] = []
 
@@ -163,15 +163,15 @@ class SummaryStep(BaseModel):
     # file's summary under a "### {file_name}" heading when there is more
     # than one; matches and tags are merged and de-duplicated, keeping the
     # strongest score per knowledge document / capability.
-    summary: str | None = None
+    summary: Optional[str] = None
     knowledge_matches: list[KnowledgeMatch] = []
     capability_tags: list[CapabilityTagOut] = []
     files: list[FileSummary] = []
 
 
 class GenerationConfigStep(BaseModel):
-    generation_mode: GenerationMode | None = None
-    page_count: int | None = None
+    generation_mode: Optional[GenerationMode] = None
+    page_count: Optional[int] = None
 
 
 class GenerationStep(BaseModel):
@@ -181,7 +181,7 @@ class GenerationStep(BaseModel):
 class ProposalStateResponse(BaseModel):
     proposal_id: int
     current_step: str
-    proposal_details: ProposalDetailsStep | None = None
-    summary: SummaryStep | None = None
-    generation_config: GenerationConfigStep | None = None
-    generation: GenerationStep | None = None
+    proposal_details: Optional[ProposalDetailsStep] = None
+    summary: Optional[SummaryStep] = None
+    generation_config: Optional[GenerationConfigStep] = None
+    generation: Optional[GenerationStep] = None

@@ -5,12 +5,16 @@ from vectorstore.pinecone_client import PineconeService
 
 
 class PineconeIndexManager:
+
     @classmethod
     def create_index(cls):
 
         client = PineconeService.get_client()
         index_name = config.pinecone.index_name
-        existing_indexes = [index["name"] for index in client.list_indexes()]
+        existing_indexes = [
+            index["name"]
+            for index in client.list_indexes()
+        ]
 
         if index_name in existing_indexes:
             print(f"Index '{index_name}' already exists.")

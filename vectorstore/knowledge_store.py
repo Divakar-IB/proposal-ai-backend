@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import uuid4
 
 from pinecone.errors.exceptions import NotFoundError
@@ -16,8 +17,8 @@ def upsert_chunks(
     source_filename: str,
     chunks: list[Chunk],
     embeddings: list[list[float]],
-    source_proposal_id: int | None = None,
-    organization_name: str | None = None,
+    source_proposal_id: Optional[int] = None,
+    organization_name: Optional[str] = None,
 ) -> list[str]:
     """Upserts embedded chunks into Pinecone with structured metadata.
     Returns the Pinecone vector IDs in the same order as `chunks`, so the

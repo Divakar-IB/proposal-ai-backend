@@ -7,7 +7,9 @@ from database.db_enum import UserRole
 
 
 async def test_get_profile_returns_the_token_owner(client, factory):
-    user = await factory.user(email="me@example.com", role=UserRole.ADMIN, full_name="Ada Lovelace", designation="CTO")
+    user = await factory.user(
+        email="me@example.com", role=UserRole.ADMIN, full_name="Ada Lovelace", designation="CTO"
+    )
 
     response = await client.get("/profile", headers=auth_headers(user))
 
@@ -56,9 +58,13 @@ async def test_update_profile_sets_both_fields(client, factory, db):
 async def test_update_profile_leaves_omitted_fields_untouched(client, factory):
     """`exclude_unset` semantics: a field absent from the body is not a clear."""
 
-    user = await factory.user(email="partial@example.com", full_name="Original Name", designation="Original Title")
+    user = await factory.user(
+        email="partial@example.com", full_name="Original Name", designation="Original Title"
+    )
 
-    response = await client.put("/profile", headers=auth_headers(user), json={"full_name": "New Name"})
+    response = await client.put(
+        "/profile", headers=auth_headers(user), json={"full_name": "New Name"}
+    )
 
     assert response.status_code == 200
     assert response.json()["full_name"] == "New Name"
@@ -68,7 +74,9 @@ async def test_update_profile_leaves_omitted_fields_untouched(client, factory):
 async def test_update_profile_clears_a_field_sent_as_null(client, factory):
     user = await factory.user(email="clear@example.com", full_name="Name", designation="Title")
 
-    response = await client.put("/profile", headers=auth_headers(user), json={"designation": None})
+    response = await client.put(
+        "/profile", headers=auth_headers(user), json={"designation": None}
+    )
 
     assert response.status_code == 200
     assert response.json()["designation"] is None
@@ -108,7 +116,9 @@ async def test_update_profile_cannot_change_email_or_role(client, factory, db):
 async def test_update_profile_rejects_wrong_field_types(client, factory):
     user = await factory.user(email="types@example.com")
 
-    response = await client.put("/profile", headers=auth_headers(user), json={"full_name": {"nested": "object"}})
+    response = await client.put(
+        "/profile", headers=auth_headers(user), json={"full_name": {"nested": "object"}}
+    )
 
     assert response.status_code == 422
 

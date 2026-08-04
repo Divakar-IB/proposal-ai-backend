@@ -17,7 +17,9 @@ class _NoOpArqPool:
     NOT run automatically until Redis is wired back up."""
 
     async def enqueue_job(self, function_name: str, *args, **kwargs):
-        logger.warning("Redis/Arq is disabled — skipped enqueue | function=%s args=%s", function_name, args)
+        logger.warning(
+            "Redis/Arq is disabled — skipped enqueue | function=%s args=%s", function_name, args
+        )
         return None
 
 

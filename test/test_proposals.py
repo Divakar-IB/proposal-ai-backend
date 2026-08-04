@@ -8,10 +8,10 @@ from database.crud import get_proposal_by_id
 from database.db_enum import DocumentStatus, GenerationMode, ProposalStatus
 from generation.length_budget import MIN_PROPOSAL_PAGES
 
+
 # ------------------------------------------------------------------
 # POST /proposal/requirement-documents
 # ------------------------------------------------------------------
-
 
 async def test_upload_requirement_document_creates_a_proposal_and_runs_the_pipeline(
     client, member, fake_s3, stub_background_pipelines
@@ -100,7 +100,9 @@ async def test_an_explicit_proposal_name_is_not_overwritten_by_auto_naming(clien
     assert response.json()["proposal_name"] == "My Own Title"
 
 
-async def test_upload_requirement_document_attaches_to_an_existing_proposal(client, member, factory, db):
+async def test_upload_requirement_document_attaches_to_an_existing_proposal(
+    client, member, factory, db
+):
     proposal = await factory.proposal(user=member, title="Existing", client_name="Original Client")
 
     response = await client.post(
@@ -154,7 +156,9 @@ async def test_upload_requirement_document_requires_at_least_one_file(client, me
     assert response.json()["detail"] == "At least one file is required."
 
 
-async def test_upload_requirement_document_ignores_blank_filename_parts(client, member_headers, fake_s3):
+async def test_upload_requirement_document_ignores_blank_filename_parts(
+    client, member_headers, fake_s3
+):
     """Swagger sends an untouched file input as a part with a blank filename; it
     must not be stored as a 0-byte object."""
 
@@ -170,7 +174,9 @@ async def test_upload_requirement_document_ignores_blank_filename_parts(client, 
     assert fake_s3.uploaded == []
 
 
-async def test_upload_requirement_document_rejects_a_non_file_files_field(client, member_headers, fake_s3):
+async def test_upload_requirement_document_rejects_a_non_file_files_field(
+    client, member_headers, fake_s3
+):
     """A completely empty part carries no filename at all, so it arrives as a
     plain form value — rejected by request validation before the handler runs."""
 
@@ -243,7 +249,6 @@ async def test_upload_requirement_document_requires_a_token(client):
 # ------------------------------------------------------------------
 # POST /proposal/generate  (SSE)
 # ------------------------------------------------------------------
-
 
 @pytest.fixture
 def stub_generation(monkeypatch):
@@ -324,7 +329,9 @@ async def test_generate_404s_for_a_soft_deleted_proposal(client, member, factory
 
 
 @pytest.mark.parametrize("page_count", [0, 1, MIN_PROPOSAL_PAGES - 1, -5])
-async def test_generate_rejects_a_page_count_below_the_minimum(client, member, factory, stub_generation, page_count):
+async def test_generate_rejects_a_page_count_below_the_minimum(
+    client, member, factory, stub_generation, page_count
+):
     """Every section is always produced, so a shorter target cannot fit their
     required outlines — rejected up front rather than silently overrunning."""
 
@@ -396,7 +403,6 @@ async def test_generate_requires_a_token(client, factory, member):
 # GET /proposal/templates
 # ------------------------------------------------------------------
 
-
 async def test_list_export_templates(client, member_headers):
     from constants import EXPORT_TEMPLATES
 
@@ -425,7 +431,6 @@ async def test_list_export_templates_requires_a_token(client):
 # ------------------------------------------------------------------
 # GET /proposal/stats
 # ------------------------------------------------------------------
-
 
 async def test_stats_reports_zero_for_every_status_when_empty(client, member_headers):
     response = await client.get("/proposal/stats", headers=member_headers)
@@ -472,7 +477,6 @@ async def test_stats_ignores_soft_deleted_proposals(client, member, factory):
 # ------------------------------------------------------------------
 # GET /proposal
 # ------------------------------------------------------------------
-
 
 async def test_list_proposals_newest_first_with_pagination(client, member, factory):
     for index in range(3):
@@ -524,7 +528,9 @@ async def test_list_proposals_filters_by_creator(client, member, factory):
     await factory.proposal(user=member, title="Mine")
     await factory.proposal(user=other, title="Theirs")
 
-    response = await client.get(f"/proposal?created_by={member.id}", headers=auth_headers(member))
+    response = await client.get(
+        f"/proposal?created_by={member.id}", headers=auth_headers(member)
+    )
 
     assert [row["title"] for row in response.json()["data"]] == ["Mine"]
 
@@ -535,8 +541,12 @@ async def test_list_proposals_filters_by_creation_date(client, member, factory):
     await factory.proposal(user=member, title="Old", created_at=datetime(2024, 1, 1, 12, 0))
     await factory.proposal(user=member, title="New", created_at=datetime(2026, 1, 1, 12, 0))
 
-    from_only = await client.get("/proposal?created_from=2025-01-01T00:00:00", headers=auth_headers(member))
-    to_only = await client.get("/proposal?created_to=2025-01-01T00:00:00", headers=auth_headers(member))
+    from_only = await client.get(
+        "/proposal?created_from=2025-01-01T00:00:00", headers=auth_headers(member)
+    )
+    to_only = await client.get(
+        "/proposal?created_to=2025-01-01T00:00:00", headers=auth_headers(member)
+    )
 
     assert [row["title"] for row in from_only.json()["data"]] == ["New"]
     assert [row["title"] for row in to_only.json()["data"]] == ["Old"]
@@ -572,7 +582,6 @@ async def test_list_proposals_requires_a_token(client):
 # PATCH /proposal/{id}/status
 # ------------------------------------------------------------------
 
-
 @pytest.mark.parametrize(
     "current, target",
     [
@@ -585,7 +594,9 @@ async def test_list_proposals_requires_a_token(client):
 async def test_status_can_move_forward(client, member, factory, db, current, target):
     proposal = await factory.proposal(user=member, status=current)
 
-    response = await client.patch(f"/proposal/{proposal.id}/status?status={target.value}", headers=auth_headers(member))
+    response = await client.patch(
+        f"/proposal/{proposal.id}/status?status={target.value}", headers=auth_headers(member)
+    )
 
     assert response.status_code == 200
     assert response.json()["status"] == target.value
@@ -607,7 +618,9 @@ async def test_status_cannot_move_backward(client, member, factory, current, tar
 
     proposal = await factory.proposal(user=member, status=current)
 
-    response = await client.patch(f"/proposal/{proposal.id}/status?status={target.value}", headers=auth_headers(member))
+    response = await client.patch(
+        f"/proposal/{proposal.id}/status?status={target.value}", headers=auth_headers(member)
+    )
 
     assert response.status_code == 409
     assert "Cannot move proposal status backward" in response.json()["detail"]
@@ -616,7 +629,9 @@ async def test_status_cannot_move_backward(client, member, factory, current, tar
 async def test_status_can_stay_the_same(client, member, factory):
     proposal = await factory.proposal(user=member, status=ProposalStatus.REVIEW)
 
-    response = await client.patch(f"/proposal/{proposal.id}/status?status=review", headers=auth_headers(member))
+    response = await client.patch(
+        f"/proposal/{proposal.id}/status?status=review", headers=auth_headers(member)
+    )
 
     assert response.status_code == 200
 
@@ -631,7 +646,9 @@ async def test_failed_can_always_be_set(client, member, factory, current):
 
     proposal = await factory.proposal(user=member, status=current)
 
-    response = await client.patch(f"/proposal/{proposal.id}/status?status=failed", headers=auth_headers(member))
+    response = await client.patch(
+        f"/proposal/{proposal.id}/status?status=failed", headers=auth_headers(member)
+    )
 
     assert response.status_code == 200
     assert response.json()["status"] == "failed"
@@ -647,22 +664,30 @@ async def test_a_failed_proposal_can_be_moved_anywhere(client, member, factory, 
 
     proposal = await factory.proposal(user=member, status=ProposalStatus.FAILED)
 
-    response = await client.patch(f"/proposal/{proposal.id}/status?status={target.value}", headers=auth_headers(member))
+    response = await client.patch(
+        f"/proposal/{proposal.id}/status?status={target.value}", headers=auth_headers(member)
+    )
 
     assert response.status_code == 200
     assert response.json()["status"] == target.value
 
 
-async def test_marking_done_schedules_knowledge_reingestion(client, member, factory, stub_background_pipelines):
+async def test_marking_done_schedules_knowledge_reingestion(
+    client, member, factory, stub_background_pipelines
+):
     proposal = await factory.proposal(user=member, status=ProposalStatus.REVIEW)
 
-    response = await client.patch(f"/proposal/{proposal.id}/status?status=done", headers=auth_headers(member))
+    response = await client.patch(
+        f"/proposal/{proposal.id}/status?status=done", headers=auth_headers(member)
+    )
 
     assert response.status_code == 200
     assert stub_background_pipelines["ingest_proposal_as_knowledge"] == [proposal.id]
 
 
-async def test_marking_done_again_reindexes_the_latest_content(client, member, factory, stub_background_pipelines):
+async def test_marking_done_again_reindexes_the_latest_content(
+    client, member, factory, stub_background_pipelines
+):
     """Deliberate: every done call re-ingests, so edits made after the first
     approval still reach the knowledge base."""
 
@@ -674,7 +699,9 @@ async def test_marking_done_again_reindexes_the_latest_content(client, member, f
     assert stub_background_pipelines["ingest_proposal_as_knowledge"] == [proposal.id, proposal.id]
 
 
-async def test_moving_to_a_non_done_status_does_not_reingest(client, member, factory, stub_background_pipelines):
+async def test_moving_to_a_non_done_status_does_not_reingest(
+    client, member, factory, stub_background_pipelines
+):
     proposal = await factory.proposal(user=member, status=ProposalStatus.INPROGRESS)
 
     await client.patch(f"/proposal/{proposal.id}/status?status=review", headers=auth_headers(member))
@@ -700,7 +727,9 @@ async def test_set_status_requires_the_status_parameter(client, member, factory)
 async def test_set_status_rejects_an_unknown_status(client, member, factory):
     proposal = await factory.proposal(user=member)
 
-    response = await client.patch(f"/proposal/{proposal.id}/status?status=archived", headers=auth_headers(member))
+    response = await client.patch(
+        f"/proposal/{proposal.id}/status?status=archived", headers=auth_headers(member)
+    )
 
     assert response.status_code == 422
 
@@ -716,7 +745,6 @@ async def test_set_status_requires_a_token(client, member, factory):
 # ------------------------------------------------------------------
 # DELETE /proposal/{id}
 # ------------------------------------------------------------------
-
 
 async def test_delete_proposal_soft_deletes_it(client, member, factory, db):
     proposal = await factory.proposal(user=member)
@@ -769,7 +797,6 @@ async def test_delete_proposal_requires_a_token(client, member, factory):
 # ------------------------------------------------------------------
 # POST /proposal/{id}/export
 # ------------------------------------------------------------------
-
 
 async def test_export_pdf_returns_a_download(client, member, factory, stub_renderers):
     proposal = await factory.proposal(user=member, title="Acme Proposal")
@@ -844,13 +871,17 @@ async def test_export_404s_for_an_unknown_template(client, member, factory, stub
 
 
 async def test_export_404s_for_an_unknown_proposal(client, member_headers, stub_renderers):
-    response = await client.post("/proposal/999999/export", headers=member_headers, json={"format": "pdf"})
+    response = await client.post(
+        "/proposal/999999/export", headers=member_headers, json={"format": "pdf"}
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Proposal not found"
 
 
-async def test_export_502s_when_rendering_blows_up(client, member, factory, stub_renderers, monkeypatch):
+async def test_export_502s_when_rendering_blows_up(
+    client, member, factory, stub_renderers, monkeypatch
+):
     """`stub_renderers` first, then override just the PDF step — otherwise the
     live Markdown->HTML step fails first and the 502 guard is never reached."""
 
@@ -936,7 +967,9 @@ async def test_export_rejects_an_unknown_format(client, member, factory, stub_re
 async def test_export_requires_a_format(client, member, factory, stub_renderers):
     proposal = await factory.proposal(user=member)
 
-    response = await client.post(f"/proposal/{proposal.id}/export", headers=auth_headers(member), json={})
+    response = await client.post(
+        f"/proposal/{proposal.id}/export", headers=auth_headers(member), json={}
+    )
 
     assert response.status_code == 422
 
@@ -951,8 +984,9 @@ async def test_export_requires_a_token(client, member, factory):
 # POST /proposal/{id}/export/email
 # ------------------------------------------------------------------
 
-
-async def test_email_export_sends_the_file_and_confirms(client, member, factory, stub_renderers, sent_emails):
+async def test_email_export_sends_the_file_and_confirms(
+    client, member, factory, stub_renderers, sent_emails
+):
     proposal = await factory.proposal(user=member, title="Acme Proposal")
     await factory.section(proposal=proposal, order_index=0)
 
@@ -972,7 +1006,9 @@ async def test_email_export_sends_the_file_and_confirms(client, member, factory,
     assert [email.kind for email in sent_emails] == ["export"]
 
 
-async def test_email_export_does_not_return_the_binary(client, member, factory, stub_renderers, sent_emails):
+async def test_email_export_does_not_return_the_binary(
+    client, member, factory, stub_renderers, sent_emails
+):
     proposal = await factory.proposal(user=member)
     await factory.section(proposal=proposal, order_index=0)
 
@@ -986,7 +1022,9 @@ async def test_email_export_does_not_return_the_binary(client, member, factory, 
     assert b"%PDF" not in response.content
 
 
-async def test_email_export_502s_when_sending_fails(client, member, factory, stub_renderers, monkeypatch):
+async def test_email_export_502s_when_sending_fails(
+    client, member, factory, stub_renderers, monkeypatch
+):
     import services.proposal_export_service as export_service
 
     async def explode(*args, **kwargs):
@@ -1019,7 +1057,9 @@ async def test_email_export_rejects_an_invalid_address(client, member, factory, 
     assert response.status_code == 422
 
 
-async def test_email_export_409s_when_there_is_nothing_to_export(client, member, factory, stub_renderers, sent_emails):
+async def test_email_export_409s_when_there_is_nothing_to_export(
+    client, member, factory, stub_renderers, sent_emails
+):
     proposal = await factory.proposal(user=member)
 
     response = await client.post(

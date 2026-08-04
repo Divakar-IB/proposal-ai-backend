@@ -1,7 +1,8 @@
 from pydantic import BaseModel
+from typing import Optional
 
 
 class CategoryRequest(BaseModel):
-    id: int | None = None
+    id: Optional[int] = None
     name: str
     description: str

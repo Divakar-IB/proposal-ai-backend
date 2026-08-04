@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    status,
+    Depends
+)
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from authentication.dependency import get_current_user
 from database.crud import (
     count_active_documents_in_category,
@@ -18,7 +22,10 @@ from utilities.logger import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/category", tags=["Categories"])
+router = APIRouter(
+    prefix='/category',
+    tags=["Categories"]
+    )
 
 
 @router.post("")
@@ -32,7 +39,10 @@ async def create_or_update_category(
         result = await db.execute(select(Category).filter(Category.id == request.id))
         category = result.scalars().first()
         if not category:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(
+                status_code=404,
+                detail="Category not found"
+            )
         existing_result = await db.execute(
             select(Category).filter(
                 Category.name == request.name,
@@ -42,7 +52,10 @@ async def create_or_update_category(
         )
         existing = existing_result.scalars().first()
         if existing:
-            raise HTTPException(status_code=400, detail="Category name already exists")
+            raise HTTPException(
+                status_code=400,
+                detail="Category name already exists"
+            )
 
         category.name = request.name
         category.description = request.description
@@ -56,7 +69,10 @@ async def create_or_update_category(
         # reused once deleted.
         existing = await get_category_by_name_including_deleted(db, request.name)
         if existing is not None and existing.is_active:
-            raise HTTPException(status_code=400, detail="Category name already exists")
+            raise HTTPException(
+                status_code=400,
+                detail="Category name already exists"
+            )
         if existing is not None:
             await reactivate_category(db, existing, description=request.description)
             return JSONResponse(
@@ -64,12 +80,18 @@ async def create_or_update_category(
                 content={"message": "Category created successfully"},
             )
 
-        category = Category(name=request.name, description=request.description)
+        category = Category(
+            name=request.name,
+            description=request.description
+        )
         db.add(category)
         message = "Category created successfully"
 
     await db.commit()
-    return JSONResponse(status_code=200, content={"message": message})
+    return JSONResponse(
+        status_code=200,
+        content={"message": message}
+    )
 
 
 @router.get("/list")
@@ -94,13 +116,17 @@ async def get_categories(
     result = query_result.all()
 
     return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={
-            "data": [
-                {"id": res.id, "name": res.name, "description": res.description, "document_count": res.document_count}
+        status_code=status.HTTP_200_OK,content={
+            "data":[
+                {
+                "id":res.id,
+                "name":res.name,
+                "description": res.description,
+                "document_count": res.document_count
+                }
                 for res in result
             ]
-        },
+        }
     )
 
 

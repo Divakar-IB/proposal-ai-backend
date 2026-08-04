@@ -1,5 +1,5 @@
 import json
-from collections.abc import AsyncIterator
+from typing import AsyncIterator
 
 from database.crud import get_proposal_by_id, update_proposal
 from database.database import db_session

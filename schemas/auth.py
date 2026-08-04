@@ -1,7 +1,6 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, ValidationInfo, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, ConfigDict, ValidationInfo
 
 from database.db_enum import UserRole
-
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -18,10 +17,11 @@ class LoginResponse(BaseModel):
             "example": {
                 "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                 "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                "role": "org_admin",
+                "role": "org_admin"
             }
         }
     )
+
 
 
 # Register
@@ -30,14 +30,18 @@ class RegisterRequest(BaseModel):
     password: str
     role: UserRole
 
-
 # Register Response
 class RegisterResponse(BaseModel):
     message: str
     email: EmailStr
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"message": "User registered successfully.", "email": "admin@example.com"}}
+        json_schema_extra={
+            "example": {
+                "message": "User registered successfully.",
+                "email": "admin@example.com"
+            }
+        }
     )
 
 
@@ -75,7 +79,11 @@ class ForgotPasswordResponse(BaseModel):
     message: str
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"message": "If this email is registered, an OTP has been sent to it."}}
+        json_schema_extra={
+            "example": {
+                "message": "If this email is registered, an OTP has been sent to it."
+            }
+        }
     )
 
 
@@ -93,7 +101,7 @@ class VerifyOtpResponse(BaseModel):
         json_schema_extra={
             "example": {
                 "message": "OTP verified successfully.",
-                "reset_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "reset_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
             }
         }
     )
@@ -115,7 +123,13 @@ class NewPasswordRequest(BaseModel):
 class NewPasswordResponse(BaseModel):
     message: str
 
-    model_config = ConfigDict(json_schema_extra={"example": {"message": "Password reset successfully."}})
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "message": "Password reset successfully."
+            }
+        }
+    )
 
 
 # Create User (Admin only)

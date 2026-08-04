@@ -1,6 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 import pypandoc
 from weasyprint import HTML
@@ -14,7 +15,7 @@ def render_pdf_from_html(html: str) -> bytes:
     return HTML(string=html).write_pdf()
 
 
-def render_docx_from_html(html: str, reference_docx: Path | None = None) -> bytes:
+def render_docx_from_html(html: str, reference_docx: Optional[Path] = None) -> bytes:
     """HTML -> DOCX via Pandoc.
 
     Pandoc's HTML reader ignores CSS entirely — it maps structure (headings,
@@ -34,7 +35,9 @@ def render_docx_from_html(html: str, reference_docx: Path | None = None) -> byte
     fd, tmp_path = tempfile.mkstemp(suffix=".docx")
     os.close(fd)
     try:
-        pypandoc.convert_text(html, "docx", format="html", outputfile=tmp_path, extra_args=extra_args)
+        pypandoc.convert_text(
+            html, "docx", format="html", outputfile=tmp_path, extra_args=extra_args
+        )
         with open(tmp_path, "rb") as f:
             return f.read()
     finally:

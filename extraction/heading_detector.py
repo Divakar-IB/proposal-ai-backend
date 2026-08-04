@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from typing import Optional
 
 # Matches common section-numbering conventions across real-world documents:
 # "1.", "1.1", "1.2.3.4", "(1)", "1)", "a)", "A.", "IV.", "Section 2", "Chapter 3:".
@@ -31,11 +32,11 @@ class LineFeatures:
     text: str
     size: float
     body_size: float
-    bold_ratio: float = 0.0  # fraction of the line's characters that are bold, 0..1
+    bold_ratio: float = 0.0       # fraction of the line's characters that are bold, 0..1
     underline_ratio: float = 0.0  # fraction of the line's characters that are underlined, 0..1
 
 
-def classify_heading(features: LineFeatures) -> str | None:
+def classify_heading(features: LineFeatures) -> Optional[str]:
     """Scores a line/paragraph against multiple independent heading signals —
     size, bold, underline, numbering, all-caps, length — instead of relying
     on any single one. Returns a Markdown heading prefix ("#", "##", "###")

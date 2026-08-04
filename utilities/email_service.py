@@ -1,5 +1,6 @@
 import asyncio
 import time
+from typing import Optional
 
 from config import config
 from utilities.email_transport import EmailAttachment, get_transport
@@ -17,7 +18,9 @@ __all__ = [
 ]
 
 
-async def send_email(to_email: str, subject: str, body: str, attachments: list[EmailAttachment] | None = None) -> None:
+async def send_email(
+    to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
+) -> None:
     """Sends one email via whichever transport `smtp.provider` selects (see
     utilities/email_transport.py).
 
@@ -30,10 +33,7 @@ async def send_email(to_email: str, subject: str, body: str, attachments: list[E
     await asyncio.to_thread(transport, to_email, subject, body, attachments)
     logger.info(
         "email sent | provider=%s to=%s subject=%r %.2fs",
-        config.smtp.provider,
-        to_email,
-        subject,
-        time.perf_counter() - started,
+        config.smtp.provider, to_email, subject, time.perf_counter() - started,
     )
 
 
@@ -52,7 +52,9 @@ async def send_otp_email(to_email: str, otp: str, expires_in_minutes: int) -> No
         raise
 
 
-async def send_proposal_export_email(to_email: str, proposal_title: str, attachment: EmailAttachment) -> None:
+async def send_proposal_export_email(
+    to_email: str, proposal_title: str, attachment: EmailAttachment
+) -> None:
     subject = f"Proposal Document - {proposal_title}"
     body = (
         "Dear Recipient,\n\n"

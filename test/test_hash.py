@@ -4,7 +4,7 @@ Was previously a print-based script importing a non-existent
 `authentication.hash` module, so it errored during collection.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from jose import jwt
@@ -21,10 +21,10 @@ from authentication.jwt_handler import (
     verify_password_reset_token,
 )
 
+
 # ------------------------------------------------------------------
 # Hashing
 # ------------------------------------------------------------------
-
 
 def test_hash_password_does_not_store_the_plaintext():
     hashed = hash_password("Admin@123")
@@ -81,7 +81,6 @@ def test_verify_password_is_case_sensitive():
 # JWT
 # ------------------------------------------------------------------
 
-
 def test_access_token_round_trips():
     token = create_access_token(user_id=7, email="a@example.com", role="org_admin")
 
@@ -113,7 +112,7 @@ def test_verify_access_token_rejects_a_foreign_signature():
 
 
 def test_verify_access_token_rejects_a_wrong_issuer():
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     token = jwt.encode(
         {
             "user_id": 1,
@@ -130,7 +129,7 @@ def test_verify_access_token_rejects_a_wrong_issuer():
 
 
 def test_verify_access_token_rejects_an_expired_token():
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     token = jwt.encode(
         {
             "user_id": 1,

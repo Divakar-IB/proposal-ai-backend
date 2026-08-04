@@ -30,14 +30,12 @@ def split_into_sections(markdown: str) -> list[dict]:
         if seen_slugs[slug] > 1:
             slug = f"{slug}-{seen_slugs[slug]}"
 
-        sections.append(
-            {
-                "section_key": slug,
-                "title": title,
-                "order_index": index,
-                "content": content,
-            }
-        )
+        sections.append({
+            "section_key": slug,
+            "title": title,
+            "order_index": index,
+            "content": content,
+        })
 
     return sections
 

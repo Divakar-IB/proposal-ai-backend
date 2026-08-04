@@ -1,6 +1,5 @@
 import json
-from collections.abc import Iterator
-from typing import Any
+from typing import Any, Iterator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,8 +12,6 @@ from prompts.proposal_review import (
     QUALITY_CHECK_SYSTEM_PROMPT,
     QUALITY_CHECK_TOOL,
     QUALITY_CHECK_USER_TEMPLATE,
-)
-from prompts.proposal_review import (
     TOOL_NAME as QUALITY_CHECK_TOOL_NAME,
 )
 from services.citation_service import (
@@ -73,7 +70,9 @@ async def retrieve_chunks_for_section(
     pool = query_chunks(query_embedding, top_k=retrieval_pool_size(TOP_K_SECTION_CHUNKS))
 
     resolved = await resolve_and_filter_chunks(db, pool, top_k=TOP_K_SECTION_CHUNKS)
-    section_state["_document_by_id"] = {document.id: document for _chunk, document in resolved if document is not None}
+    section_state["_document_by_id"] = {
+        document.id: document for _chunk, document in resolved if document is not None
+    }
     return [chunk for chunk, _document in resolved]
 
 
@@ -156,7 +155,9 @@ def run_quality_check(section_state: dict[str, Any], requirements_json: str) -> 
     return QualityCheckResult.model_validate(parsed)
 
 
-def decide_section_status(result: QualityCheckResult, force_approve: bool = False) -> tuple[str, str | None, bool]:
+def decide_section_status(
+    result: QualityCheckResult, force_approve: bool = False
+) -> tuple[str, Optional[str], bool]:
     """Maps a quality-check verdict to (status, feedback-to-seed-the-next-draft,
     review_flag). `force_approve` lets a caller with a bounded retry budget
     (the automated pipeline) still land on a terminal APPROVED state instead

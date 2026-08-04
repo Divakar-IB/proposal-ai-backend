@@ -6,10 +6,10 @@ from helpers import upload
 
 from database.crud import get_organization_settings
 
+
 # ------------------------------------------------------------------
 # GET /organization-settings
 # ------------------------------------------------------------------
-
 
 async def test_get_settings_returns_an_empty_shape_when_no_row_exists(client, admin_headers):
     """The Settings page always has something to render, so a missing row is an
@@ -68,7 +68,6 @@ async def test_get_settings_requires_a_token(client):
 # PUT /organization-settings
 # ------------------------------------------------------------------
 
-
 async def test_put_settings_creates_the_row(client, admin_headers, db):
     response = await client.put(
         "/organization-settings",
@@ -82,10 +81,14 @@ async def test_put_settings_creates_the_row(client, admin_headers, db):
     assert await get_organization_settings(db) is not None
 
 
-async def test_put_settings_updates_the_existing_row_rather_than_adding_one(client, admin_headers, factory, db):
+async def test_put_settings_updates_the_existing_row_rather_than_adding_one(
+    client, admin_headers, factory, db
+):
     settings = await factory.organization_settings(organization_name="Old Name")
 
-    response = await client.put("/organization-settings", headers=admin_headers, json={"organization_name": "New Name"})
+    response = await client.put(
+        "/organization-settings", headers=admin_headers, json={"organization_name": "New Name"}
+    )
 
     assert response.status_code == 200
     assert response.json()["id"] == settings.id
@@ -98,7 +101,9 @@ async def test_put_settings_leaves_omitted_fields_untouched(client, admin_header
         organization_name="Innoboon", default_signee_name="Ada", contact_email="a@b.com"
     )
 
-    response = await client.put("/organization-settings", headers=admin_headers, json={"organization_name": "Renamed"})
+    response = await client.put(
+        "/organization-settings", headers=admin_headers, json={"organization_name": "Renamed"}
+    )
 
     assert response.status_code == 200
     assert response.json()["organization_name"] == "Renamed"
@@ -111,7 +116,9 @@ async def test_put_settings_clears_a_field_sent_as_null(client, admin_headers, f
 
     await factory.organization_settings(organization_name="Innoboon", default_signee_name="Ada")
 
-    response = await client.put("/organization-settings", headers=admin_headers, json={"default_signee_name": None})
+    response = await client.put(
+        "/organization-settings", headers=admin_headers, json={"default_signee_name": None}
+    )
 
     assert response.status_code == 200
     assert response.json()["default_signee_name"] is None
@@ -128,14 +135,18 @@ async def test_put_settings_normalises_the_contact_email(client, admin_headers):
 
 
 async def test_put_settings_treats_an_empty_contact_email_as_null(client, admin_headers):
-    response = await client.put("/organization-settings", headers=admin_headers, json={"contact_email": ""})
+    response = await client.put(
+        "/organization-settings", headers=admin_headers, json={"contact_email": ""}
+    )
 
     assert response.status_code == 200
     assert response.json()["contact_email"] is None
 
 
 async def test_put_settings_rejects_an_invalid_contact_email(client, admin_headers):
-    response = await client.put("/organization-settings", headers=admin_headers, json={"contact_email": "not-an-email"})
+    response = await client.put(
+        "/organization-settings", headers=admin_headers, json={"contact_email": "not-an-email"}
+    )
 
     assert response.status_code == 422
 
@@ -150,14 +161,15 @@ async def test_put_settings_with_an_empty_body_creates_an_all_null_row(client, a
 
 
 async def test_put_settings_is_forbidden_for_members(client, member_headers):
-    response = await client.put("/organization-settings", headers=member_headers, json={"organization_name": "X"})
+    response = await client.put(
+        "/organization-settings", headers=member_headers, json={"organization_name": "X"}
+    )
     assert response.status_code == 403
 
 
 # ------------------------------------------------------------------
 # POST /organization-settings/logo
 # ------------------------------------------------------------------
-
 
 async def test_upload_logo_stores_it_and_returns_a_presigned_url(client, admin_headers, fake_s3):
     response = await client.post(
@@ -187,7 +199,9 @@ async def test_upload_logo_replaces_the_old_object_only_after_the_new_one_lands(
     assert len(fake_s3.uploaded) == 1
 
 
-async def test_upload_logo_survives_a_failed_cleanup_of_the_old_object(client, admin_headers, factory, fake_s3, db):
+async def test_upload_logo_survives_a_failed_cleanup_of_the_old_object(
+    client, admin_headers, factory, fake_s3, db
+):
     """Failing to delete the replaced object leaves an orphan in the bucket but
     must not fail the request — the new logo is already live."""
 
@@ -284,8 +298,9 @@ async def test_upload_logo_is_forbidden_for_members(client, member_headers):
 # DELETE /organization-settings/logo
 # ------------------------------------------------------------------
 
-
-async def test_remove_logo_clears_the_path_and_deletes_the_object(client, admin_headers, factory, fake_s3, db):
+async def test_remove_logo_clears_the_path_and_deletes_the_object(
+    client, admin_headers, factory, fake_s3, db
+):
     settings = await factory.organization_settings(logo_path="input/organization/logo/abc.png")
 
     response = await client.delete("/organization-settings/logo", headers=admin_headers)

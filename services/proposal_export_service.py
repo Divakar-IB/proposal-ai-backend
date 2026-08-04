@@ -54,7 +54,9 @@ async def render_proposal_document(
     proposal = _proposal_or_404(await get_proposal_by_id(db, proposal_id))
 
     if not proposal.sections:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Proposal has no generated sections to export")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Proposal has no generated sections to export"
+        )
 
     if get_html_template_path(template_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
@@ -84,11 +86,11 @@ async def render_proposal_document(
     except Exception:
         logger.exception(
             "proposal export rendering failed | proposal_id=%s template_id=%s format=%s",
-            proposal_id,
-            template_id,
-            export_format,
+            proposal_id, template_id, export_format,
         )
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to render proposal export")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to render proposal export"
+        )
 
     if proposal.status != ProposalStatus.DONE:
         proposal = await update_proposal(db, proposal, status=ProposalStatus.DONE)
@@ -96,9 +98,7 @@ async def render_proposal_document(
     filename = sanitize_filename(f"{proposal.title}.{export_format.value}")
     logger.info(
         "proposal exported | proposal_id=%s template_id=%s format=%s",
-        proposal_id,
-        template_id,
-        export_format,
+        proposal_id, template_id, export_format,
     )
     return proposal, content, filename, _CONTENT_TYPES[export_format]
 
@@ -111,6 +111,10 @@ async def email_rendered_proposal(
     the binary in the response *and* email it, instead of rendering twice."""
 
     try:
-        await send_proposal_export_email(email, proposal.title, EmailAttachment(content, filename, content_type))
+        await send_proposal_export_email(
+            email, proposal.title, EmailAttachment(content, filename, content_type)
+        )
     except Exception:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to send proposal export email")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to send proposal export email"
+        )

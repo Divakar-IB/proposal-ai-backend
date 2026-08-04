@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -23,12 +24,12 @@ from database.crud import (
     update_knowledge_document,
 )
 from database.database import get_db
-from database.db_enum import DocumentAvailability
+from database.db_enum import DocumentAvailability, IngestionStatus
 from database.models import Category, KnowledgeDocument
 from schemas.document import DocumentListResponse, DocumentResponse
 from tasks.document_processing import process_knowledge_document
-from utilities.logger import get_logger
 from utilities.pagination import paginate
+from utilities.logger import get_logger
 from utilities.s3_service import S3PathBuilder, S3Service
 from vectorstore.knowledge_store import delete_document_vectors
 
@@ -67,7 +68,9 @@ async def _assert_category_exists(db: AsyncSession, category_id: int) -> None:
     description TEXT for nothing."""
 
     exists = await db.scalar(
-        select(Category.id).filter(Category.id == category_id, Category.is_active.is_(True)).limit(1)
+        select(Category.id)
+        .filter(Category.id == category_id, Category.is_active.is_(True))
+        .limit(1)
     )
     if exists is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
@@ -76,13 +79,13 @@ async def _assert_category_exists(db: AsyncSession, category_id: int) -> None:
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
     background_tasks: BackgroundTasks,
-    document_id: int | None = Form(None),
-    document_name: str | None = Form(None),
-    description: str | None = Form(None),
-    category_id: int | None = Form(None),
-    availability_status: DocumentAvailability | None = Form(None),
-    tags: list[str] | None = Form(None),
-    file: UploadFile | None = File(None),
+     document_id: Optional[int] = Form(None),
+    document_name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    category_id: Optional[int] = Form(None),
+    availability_status: Optional[DocumentAvailability] = Form(None),
+    tags: Optional[list[str]] = Form(None),
+    file: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -139,8 +142,7 @@ async def upload_document(
             except Exception:
                 logger.exception(
                     "re-upload to S3 failed | document_id=%s filename=%s",
-                    document_id,
-                    file.filename,
+                    document_id, file.filename,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
@@ -148,14 +150,12 @@ async def upload_document(
                 )
 
             old_file_path = document.file_path
-            updates.update(
-                {
-                    "file_name": file.filename,
-                    "file_path": s3_key,
-                    "extension": extension,
-                    "version": document.version + 1,
-                }
-            )
+            updates.update({
+                "file_name": file.filename,
+                "file_path": s3_key,
+                "extension": extension,
+                "version": document.version + 1,
+            })
             s3_service.delete_file(old_file_path)
             logger.info("file replaced | document_id=%s key=%s", document_id, s3_key)
 
@@ -163,9 +163,7 @@ async def upload_document(
             document = await update_knowledge_document(db, document, **updates)
         logger.info(
             "document updated | document_id=%s fields=%s file_replaced=%s",
-            document.id,
-            sorted(updates),
-            file is not None,
+            document.id, sorted(updates), file is not None,
         )
 
         if file is not None:
@@ -178,9 +176,9 @@ async def upload_document(
     # Create a new document
     # ------------------------------------------------------------------
     missing = [
-        name
-        for name, value in (("document_name", document_name), ("category_id", category_id), ("file", file))
-        if value is None
+        name for name, value in (
+            ("document_name", document_name), ("category_id", category_id), ("file", file)
+        ) if value is None
     ]
     if missing:
         raise HTTPException(
@@ -195,9 +193,7 @@ async def upload_document(
 
     logger.info(
         "upload started | user_id=%s category_id=%s filename=%s",
-        user_id,
-        category_id,
-        file.filename,
+        user_id, category_id, file.filename,
     )
 
     extension = Path(file.filename or "").suffix.lstrip(".").lower()
@@ -239,9 +235,9 @@ async def upload_document(
 
 @router.get("/list", response_model=DocumentListResponse)
 async def list_documents(
-    category_id: int | None = None,
-    search: str | None = None,
-    status: DocumentAvailability | None = None,
+    category_id: Optional[int] = None,
+    search: Optional[str] = None,
+    status: Optional[DocumentAvailability] = None,
     include_generated: bool = False,
     page: int = 1,
     limit: int = 10,

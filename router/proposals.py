@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from typing import List, Optional
 
 from fastapi import (
     APIRouter,
@@ -30,16 +31,18 @@ from database.database import get_db
 from database.db_enum import DocumentStatus, ProposalStatus
 from database.models import Proposal, ProposalSection, RequirementDocument
 from generation.proposal_generator import generate_proposal_stream
+from services.proposal_knowledge_service import ingest_proposal_as_knowledge
+from services.proposal_naming_service import generate_proposal_name
 from schemas.proposal import (
+    ProposalExportEmailRequest,
+    ProposalExportEmailResponse,
+    ProposalExportRequest,
     ExportTemplateResponse,
     FileSummary,
     GenerationConfigStep,
     GenerationStep,
     ProposalDetailResponse,
     ProposalDetailsStep,
-    ProposalExportEmailRequest,
-    ProposalExportEmailResponse,
-    ProposalExportRequest,
     ProposalGenerateRequest,
     ProposalListResponse,
     ProposalResponse,
@@ -52,8 +55,6 @@ from schemas.proposal import (
 )
 from schemas.requirement_document import RequirementDocumentResponse
 from services import proposal_export_service, proposal_review_service, proposal_wizard_service
-from services.proposal_knowledge_service import ingest_proposal_as_knowledge
-from services.proposal_naming_service import generate_proposal_name
 from tasks.requirement_processing import process_requirement_document_pipeline
 from utilities.logger import get_logger
 from utilities.s3_service import S3PathBuilder, S3Service
@@ -71,11 +72,10 @@ router = APIRouter(
 # Response builders
 # ------------------------------------------------------------------
 
-
 def _requirement_document_response(
     document: RequirementDocument,
     proposal: Proposal,
-    additional_documents: list[RequirementDocument] | None = None,
+    additional_documents: Optional[list[RequirementDocument]] = None,
 ) -> RequirementDocumentResponse:
     return RequirementDocumentResponse(
         id=document.id,
@@ -92,7 +92,8 @@ def _requirement_document_response(
         capability_tags=document.capability_tags or [],
         created_at=document.created_at,
         additional_documents=[
-            _requirement_document_response(extra, proposal) for extra in (additional_documents or [])
+            _requirement_document_response(extra, proposal)
+            for extra in (additional_documents or [])
         ],
     )
 
@@ -157,18 +158,17 @@ async def _get_proposal_or_404(db: AsyncSession, proposal_id: int) -> Proposal:
 # synchronously in this same response)
 # ------------------------------------------------------------------
 
-
 @router.post(
     "/requirement-documents",
     response_model=RequirementDocumentResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_requirement_document(
-    files: list[UploadFile] = File(default=[]),
-    proposal_id: int | None = Form(None),
-    proposal_name: str | None = Form(None),
+    files: List[UploadFile] = File(default=[]),
+    proposal_id: Optional[int] = Form(None),
+    proposal_name: Optional[str] = Form(None),
     client_name: str = Form(...),
-    additional_context: str | None = Form(None),
+    additional_context: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -236,9 +236,13 @@ async def upload_requirement_document(
             proposal_id=proposal.id,
         )
         document = await create_requirement_document(db, document)
-        logger.info("requirement document created | document_id=%s proposal_id=%s", document.id, proposal.id)
+        logger.info(
+            "requirement document created | document_id=%s proposal_id=%s", document.id, proposal.id
+        )
 
-        document = await process_requirement_document_pipeline(db, document, additional_context=additional_context)
+        document = await process_requirement_document_pipeline(
+            db, document, additional_context=additional_context
+        )
         documents.append(document)
 
     primary_document = documents[0]
@@ -271,7 +275,6 @@ async def upload_requirement_document(
 # Proposal generation (streaming) + retrieval
 # ------------------------------------------------------------------
 
-
 @router.post("/generate")
 async def generate_proposal_endpoint(
     request: ProposalGenerateRequest,
@@ -287,9 +290,7 @@ async def generate_proposal_endpoint(
 
     logger.info(
         "proposal generation started | proposal_id=%s mode=%s page_count=%s",
-        proposal.id,
-        request.generation_mode,
-        request.page_count,
+        proposal.id, request.generation_mode, request.page_count,
     )
 
     return StreamingResponse(
@@ -336,11 +337,11 @@ async def get_proposal_stats(
 
 @router.get("", response_model=ProposalListResponse)
 async def list_proposals(
-    search: str | None = None,
-    status: ProposalStatus | None = None,
-    created_by: int | None = None,
-    created_from: datetime | None = None,
-    created_to: datetime | None = None,
+    search: Optional[str] = None,
+    status: Optional[ProposalStatus] = None,
+    created_by: Optional[int] = None,
+    created_from: Optional[datetime] = None,
+    created_to: Optional[datetime] = None,
     page: int = 1,
     limit: int = 10,
     db: AsyncSession = Depends(get_db),
@@ -387,7 +388,6 @@ async def delete_proposal_endpoint(
 # Proposal status tracking + export
 # ------------------------------------------------------------------
 
-
 @router.patch("/{proposal_id}/status", response_model=ProposalResponse)
 async def set_proposal_status(
     proposal_id: int,
@@ -430,7 +430,7 @@ async def export_proposal(
     (forced download). Emailing the export is a separate endpoint — see
     POST /{proposal_id}/export/email."""
 
-    _, content, filename, content_type = await proposal_export_service.render_proposal_document(
+    proposal, content, filename, content_type = await proposal_export_service.render_proposal_document(
         db, proposal_id, request.template_id, request.format
     )
 
@@ -453,7 +453,9 @@ async def email_proposal_export(
         db, proposal_id, request.template_id, request.format
     )
 
-    await proposal_export_service.email_rendered_proposal(request.email, proposal, content, filename, content_type)
+    await proposal_export_service.email_rendered_proposal(
+        request.email, proposal, content, filename, content_type
+    )
 
     return ProposalExportEmailResponse(
         proposal_id=proposal.id,
@@ -466,7 +468,6 @@ async def email_proposal_export(
 # ------------------------------------------------------------------
 # Generation-wizard state + section arrangement
 # ------------------------------------------------------------------
-
 
 @router.get("/{proposal_id}/state", response_model=ProposalStateResponse)
 async def get_proposal_state(
@@ -522,7 +523,9 @@ async def get_proposal_state(
             generation_mode=proposal.generation_mode,
             page_count=proposal.page_count,
         )
-        generation = GenerationStep(status=proposal_wizard_service.wizard_generation_status(proposal.status))
+        generation = GenerationStep(
+            status=proposal_wizard_service.wizard_generation_status(proposal.status)
+        )
 
     if not documents:
         current_step = "proposal_details"
@@ -590,3 +593,5 @@ async def edit_proposal_sections(
     await db.commit()
     await db.refresh(proposal)
     return _proposal_detail_response(proposal)
+
+

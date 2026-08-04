@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 
 from llm.chat_client import GroqChatClient
 
@@ -11,7 +12,7 @@ _SYSTEM_PROMPT = (
 )
 
 
-def summarize_requirements(requirements: dict, additional_context: str | None = None) -> str:
+def summarize_requirements(requirements: dict, additional_context: Optional[str] = None) -> str:
     """Generates the sidebar summary from the already-extracted structured requirements
     (not the raw document) — avoids re-sending the full RFP text through the LLM a second
     time on top of the structured-extraction call."""

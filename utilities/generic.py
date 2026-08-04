@@ -1,6 +1,6 @@
-import re
 import secrets
 import string
+import re
 from pathlib import Path
 
 from database.db_enum import UserRole
@@ -59,6 +59,7 @@ def generate_otp(length: int = 6) -> str:
     return "".join(secrets.choice(string.digits) for _ in range(length))
 
 
+
 def sanitize_filename(filename: str) -> str:
     """
     Sanitize a filename for safe storage in S3.
@@ -72,11 +73,11 @@ def sanitize_filename(filename: str) -> str:
 
     if not name:
         return f"file{extension}"
-    name = re.sub(r"[^a-z0-9_-]", "_", name)
-
+    name = re.sub(r'[^a-z0-9_-]', '_', name)
+    
     # Normalize multiple underscores and trim
-    name = re.sub(r"_+", "_", name).strip("_")
-
+    name = re.sub(r'_+', '_', name).strip('_')
+    
     # Fallback if everything was stripped
     if not name:
         name = "file"

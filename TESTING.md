@@ -215,7 +215,6 @@ bcrypt code path at every call site:
 
 ```python
 import authentication.dependency as auth_dependency
-
 auth_dependency.pwd_context.update(bcrypt__default_rounds=4)
 ```
 
@@ -255,7 +254,6 @@ metadata at conftest import:
 class _JsonEncodedList(TypeDecorator):
     """Stand-in for Postgres ARRAY(String): stores the list as a JSON blob
     so KnowledgeDocument.tags round-trips as a real Python list."""
-
     impl = TEXT
     cache_ok = True
 
@@ -339,8 +337,8 @@ def app(session_factory, monkeypatch):
                 await session.rollback()
                 raise
 
-    monkeypatch.setattr(database_module, "SessionLocal", session_factory)  # ②
-    main.app.dependency_overrides[get_db] = override_get_db  # ①
+    monkeypatch.setattr(database_module, "SessionLocal", session_factory)   # ②
+    main.app.dependency_overrides[get_db] = override_get_db                 # ①
     try:
         yield main.app
     finally:
@@ -401,10 +399,10 @@ to assert on or manipulate them.
 
 ```python
 class FakeS3:
-    uploaded: list[str]  # keys the app tried to upload
-    deleted: list[str]  # keys the app tried to delete
-    upload_error: Exception | None  # set this to make uploads fail
-    delete_error: Exception | None  # set this to make deletes fail
+    uploaded: list[str]              # keys the app tried to upload
+    deleted: list[str]               # keys the app tried to delete
+    upload_error: Exception | None   # set this to make uploads fail
+    delete_error: Exception | None   # set this to make deletes fail
 ```
 
 `generate_presigned_url` returns a deterministic `https://s3.test/{key}?signed=1`,
@@ -421,7 +419,6 @@ class-level lookup supplies:
 def forward(method):
     def wrapper(_s3_service_self, *args, **kwargs):
         return method(*args, **kwargs)
-
     return wrapper
 ```
 
@@ -436,8 +433,8 @@ binds the function into their own namespace, so patching the source module would
 have no effect:
 
 ```python
-monkeypatch.setattr(auth_service, "send_otp_email", recorder("otp"))
-monkeypatch.setattr(team_service, "send_team_invite_email", recorder("invite"))
+monkeypatch.setattr(auth_service,   "send_otp_email",             recorder("otp"))
+monkeypatch.setattr(team_service,   "send_team_invite_email",     recorder("invite"))
 monkeypatch.setattr(export_service, "send_proposal_export_email", recorder("export"))
 ```
 
@@ -447,9 +444,9 @@ Returns a dict of call-recording lists:
 
 ```python
 {
-    "process_knowledge_document": [document_id, ...],
-    "delete_document_vectors": [document_id, ...],
-    "ingest_proposal_as_knowledge": [proposal_id, ...],
+    "process_knowledge_document":            [document_id, ...],
+    "delete_document_vectors":               [document_id, ...],
+    "ingest_proposal_as_knowledge":          [proposal_id, ...],
     "process_requirement_document_pipeline": [document_id, ...],
 }
 ```
@@ -481,8 +478,8 @@ Requested explicitly by the export tests. Stubs **all three** native rendering
 steps:
 
 ```python
-monkeypatch.setattr(export_service, "render_proposal_html", lambda *a, **k: "<html>fake</html>")
-monkeypatch.setattr(export_service, "render_pdf_from_html", lambda html: b"%PDF-1.7 fake")
+monkeypatch.setattr(export_service, "render_proposal_html",  lambda *a, **k: "<html>fake</html>")
+monkeypatch.setattr(export_service, "render_pdf_from_html",  lambda html: b"%PDF-1.7 fake")
 monkeypatch.setattr(export_service, "render_docx_from_html", lambda html, reference_docx=None: b"PK\x03\x04 fake-docx")
 ```
 
@@ -527,12 +524,10 @@ Admin-only routes return 403 only for a *valid* token whose role is insufficient
 async def test_x(client, admin_headers): ...
 async def test_y(client, member_headers): ...
 
-
 # explicit user when the test needs the row itself
 async def test_z(client, factory):
     user = await factory.user(email="a@example.com", role=UserRole.ADMIN)
     response = await client.get("/profile", headers=auth_headers(user))
-
 
 # no headers at all, to assert the 401
 async def test_requires_auth(client):
@@ -575,9 +570,7 @@ async def test_example(client, factory):
     admin = await factory.admin()
     category = await factory.category(name="Case Studies")
     document = await factory.knowledge_document(
-        user=admin,
-        category=category,
-        tags=["aws"],
+        user=admin, category=category, tags=["aws"],
     )
 ```
 
@@ -779,7 +772,7 @@ passes a `UserRole`:
 user = User(
     email=register_request.email,
     hashed_password=hash_password(register_request.password),
-    role=assign_role(register_request.role),  # ← register_request.role is a UserRole
+    role=assign_role(register_request.role),      # ← register_request.role is a UserRole
     is_first_login=True,
 )
 ```
@@ -823,7 +816,7 @@ existing_result = await db.execute(
     select(Category).filter(
         Category.name == request.name,
         Category.id != request.id,
-        Category.is_active.is_(True),  # ← soft-deleted rows are invisible here
+        Category.is_active.is_(True),        # ← soft-deleted rows are invisible here
     )
 )
 existing = existing_result.scalars().first()
@@ -833,7 +826,7 @@ if existing:
 category.name = request.name
 category.description = request.description
 ...
-await db.commit()  # ← IntegrityError: UNIQUE constraint failed
+await db.commit()                            # ← IntegrityError: UNIQUE constraint failed
 ```
 
 The name passes the application-level check, then the database rejects it.
@@ -858,8 +851,8 @@ revive-the-hidden-row logic.
 `services/proposal_export_service.py::render_proposal_document`:
 
 ```python
-proposal_json = _build_proposal_json(proposal)  # ← unguarded
-html = render_proposal_html(  # ← unguarded, calls pypandoc
+proposal_json = _build_proposal_json(proposal)      # ← unguarded
+html = render_proposal_html(                        # ← unguarded, calls pypandoc
     proposal_json, template_id, ...
 )
 
@@ -912,7 +905,7 @@ the 502 the endpoint already documents.
 ```python
 """One line saying which endpoints this module covers."""
 
-from helpers import auth_headers, upload  # NOT `from test.helpers import ...`
+from helpers import auth_headers, upload      # NOT `from test.helpers import ...`
 
 
 async def test_thing_does_what_it_says(client, member, factory, fake_s3):
@@ -949,14 +942,14 @@ module shadows a namespace package, so `import test.anything` resolves to
 
 ```python
 # single file
-files = {"file": upload("a.pdf")}
-files = {"file": ("logo.png", b"\x89PNG", "image/png")}
+files={"file": upload("a.pdf")}
+files={"file": ("logo.png", b"\x89PNG", "image/png")}
 
 # repeated field (List[UploadFile])
-files = [("files", upload("first.pdf")), ("files", upload("second.pdf"))]
+files=[("files", upload("first.pdf")), ("files", upload("second.pdf"))]
 
 # form fields alongside — all values must be strings
-data = {"category_id": str(category.id), "tags": ["aws", "migration"]}
+data={"category_id": str(category.id), "tags": ["aws", "migration"]}
 ```
 
 Note the distinction the suite makes: a part with a **blank filename** reaches
@@ -971,7 +964,6 @@ async def test_s3_down(client, member, factory, fake_s3):
     fake_s3.upload_error = RuntimeError("bucket unreachable")
     ...
     assert response.status_code == 502
-
 
 async def test_smtp_down(client, admin_headers, monkeypatch):
     import services.team_service as team_service

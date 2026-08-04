@@ -9,12 +9,14 @@ from helpers import auth_headers
 from database.db_enum import UserRole
 from utilities.generic import MIN_TEMP_PASSWORD_LENGTH, generate_temp_password
 
+
 # ------------------------------------------------------------------
 # POST /team/invite
 # ------------------------------------------------------------------
 
-
-async def test_invite_creates_the_member_and_emails_a_temporary_password(client, admin_headers, db, sent_emails):
+async def test_invite_creates_the_member_and_emails_a_temporary_password(
+    client, admin_headers, db, sent_emails
+):
     response = await client.post(
         "/team/invite", headers=admin_headers, json={"email": "invitee@example.com", "role": "member"}
     )
@@ -47,7 +49,9 @@ async def test_invite_rejects_an_existing_email(client, admin_headers, factory):
     assert response.json()["detail"] == "A user with this email already exists"
 
 
-async def test_invite_reports_502_when_the_email_fails_but_keeps_the_account(client, admin_headers, db, monkeypatch):
+async def test_invite_reports_502_when_the_email_fails_but_keeps_the_account(
+    client, admin_headers, db, monkeypatch
+):
     """The row is already committed when the mail fails, so a retry would hit
     the 409 above — the 502 is what tells the admin to resend instead."""
 
@@ -119,7 +123,6 @@ async def test_invite_validation_errors(client, admin_headers, payload):
 # GET /team/members
 # ------------------------------------------------------------------
 
-
 async def test_list_members_returns_newest_first_with_pagination_meta(client, admin, factory):
     await factory.user(email="one@example.com")
     await factory.user(email="two@example.com")
@@ -186,11 +189,12 @@ async def test_list_members_is_forbidden_for_members(client, member_headers):
 # PATCH /team/members/{id}/role
 # ------------------------------------------------------------------
 
-
 async def test_promote_a_member_to_admin(client, admin_headers, factory, db):
     member = await factory.user(email="promote@example.com", role=UserRole.USER)
 
-    response = await client.patch(f"/team/members/{member.id}/role", headers=admin_headers, json={"role": "org_admin"})
+    response = await client.patch(
+        f"/team/members/{member.id}/role", headers=admin_headers, json={"role": "org_admin"}
+    )
 
     assert response.status_code == 200
     assert response.json()["role"] == "org_admin"
@@ -237,7 +241,9 @@ async def test_cannot_change_your_own_role(client, admin):
 
 
 async def test_change_role_404s_for_an_unknown_member(client, admin_headers):
-    response = await client.patch("/team/members/999999/role", headers=admin_headers, json={"role": "member"})
+    response = await client.patch(
+        "/team/members/999999/role", headers=admin_headers, json={"role": "member"}
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Team member not found"
@@ -246,7 +252,9 @@ async def test_change_role_404s_for_an_unknown_member(client, admin_headers):
 async def test_change_role_rejects_an_unknown_role(client, admin_headers, factory):
     member = await factory.user(email="badrole@example.com")
 
-    response = await client.patch(f"/team/members/{member.id}/role", headers=admin_headers, json={"role": "wizard"})
+    response = await client.patch(
+        f"/team/members/{member.id}/role", headers=admin_headers, json={"role": "wizard"}
+    )
 
     assert response.status_code == 422
 
@@ -254,7 +262,9 @@ async def test_change_role_rejects_an_unknown_role(client, admin_headers, factor
 async def test_change_role_is_forbidden_for_members(client, member_headers, factory):
     target = await factory.user(email="target@example.com")
 
-    response = await client.patch(f"/team/members/{target.id}/role", headers=member_headers, json={"role": "org_admin"})
+    response = await client.patch(
+        f"/team/members/{target.id}/role", headers=member_headers, json={"role": "org_admin"}
+    )
 
     assert response.status_code == 403
 
@@ -263,18 +273,21 @@ async def test_change_role_is_forbidden_for_members(client, member_headers, fact
 # PATCH /team/members/{id}/status
 # ------------------------------------------------------------------
 
-
 async def test_deactivate_a_member_blocks_their_login(client, admin_headers, factory):
     from helpers import TEST_PASSWORD
 
     member = await factory.user(email="toggle@example.com")
 
-    response = await client.patch(f"/team/members/{member.id}/status", headers=admin_headers, json={"is_active": False})
+    response = await client.patch(
+        f"/team/members/{member.id}/status", headers=admin_headers, json={"is_active": False}
+    )
 
     assert response.status_code == 200
     assert response.json()["status"] == "inactive"
 
-    login = await client.post("/auth/login", json={"email": member.email, "password": TEST_PASSWORD})
+    login = await client.post(
+        "/auth/login", json={"email": member.email, "password": TEST_PASSWORD}
+    )
     assert login.status_code == 403
 
 
@@ -283,20 +296,28 @@ async def test_reactivate_a_member_restores_their_login(client, admin_headers, f
 
     member = await factory.user(email="restore@example.com", is_active=False)
 
-    response = await client.patch(f"/team/members/{member.id}/status", headers=admin_headers, json={"is_active": True})
+    response = await client.patch(
+        f"/team/members/{member.id}/status", headers=admin_headers, json={"is_active": True}
+    )
 
     assert response.status_code == 200
     assert response.json()["status"] == "active"
 
-    login = await client.post("/auth/login", json={"email": member.email, "password": TEST_PASSWORD})
+    login = await client.post(
+        "/auth/login", json={"email": member.email, "password": TEST_PASSWORD}
+    )
     assert login.status_code == 200
 
 
 async def test_setting_the_status_a_member_already_has_is_a_no_op(client, admin_headers, factory):
     member = await factory.user(email="idempotent@example.com")
 
-    first = await client.patch(f"/team/members/{member.id}/status", headers=admin_headers, json={"is_active": True})
-    second = await client.patch(f"/team/members/{member.id}/status", headers=admin_headers, json={"is_active": True})
+    first = await client.patch(
+        f"/team/members/{member.id}/status", headers=admin_headers, json={"is_active": True}
+    )
+    second = await client.patch(
+        f"/team/members/{member.id}/status", headers=admin_headers, json={"is_active": True}
+    )
 
     assert first.status_code == 200
     assert second.status_code == 200
@@ -329,14 +350,18 @@ async def test_cannot_deactivate_the_last_admin(client, factory):
 
 
 async def test_change_status_404s_for_an_unknown_member(client, admin_headers):
-    response = await client.patch("/team/members/999999/status", headers=admin_headers, json={"is_active": False})
+    response = await client.patch(
+        "/team/members/999999/status", headers=admin_headers, json={"is_active": False}
+    )
     assert response.status_code == 404
 
 
 async def test_change_status_requires_the_flag(client, admin_headers, factory):
     member = await factory.user(email="noflag@example.com")
 
-    response = await client.patch(f"/team/members/{member.id}/status", headers=admin_headers, json={})
+    response = await client.patch(
+        f"/team/members/{member.id}/status", headers=admin_headers, json={}
+    )
 
     assert response.status_code == 422
 
@@ -354,7 +379,6 @@ async def test_change_status_is_forbidden_for_members(client, member_headers, fa
 # ------------------------------------------------------------------
 # DELETE /team/members/{id}
 # ------------------------------------------------------------------
-
 
 async def test_delete_member_soft_deletes_and_keeps_them_listed(client, admin, factory, db):
     member = await factory.user(email="removeme@example.com")

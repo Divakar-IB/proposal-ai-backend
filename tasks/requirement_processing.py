@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +29,7 @@ CHUNK_POOL_SIZE = 30  # pulled before deduping to one best match per document
 
 
 async def process_requirement_document_pipeline(
-    db: AsyncSession, document: RequirementDocument, additional_context: str | None = None
+    db: AsyncSession, document: RequirementDocument, additional_context: Optional[str] = None
 ) -> RequirementDocument:
     """
     extract -> structured requirement extraction (GPT-OSS via Groq) -> capability
@@ -45,7 +46,7 @@ async def process_requirement_document_pipeline(
     """
     document_id = document.id
     await update_requirement_document(db, document, status=DocumentStatus.EXTRACTING)
-    temp_path: str | None = None
+    temp_path: Optional[str] = None
 
     try:
         temp_path = s3_service.download_to_tempfile(document.file_path, suffix=f".{document.extension}")
@@ -54,9 +55,7 @@ async def process_requirement_document_pipeline(
         extracted = run_extraction(temp_path, document.file_name, document.extension)
         logger.info(
             "extraction completed | document_id=%s chars=%s pages=%s",
-            document_id,
-            len(extracted.markdown),
-            len(extracted.pages),
+            document_id, len(extracted.markdown), len(extracted.pages),
         )
 
         requirements = parse_requirements(extracted.markdown, additional_context=additional_context)
@@ -72,8 +71,7 @@ async def process_requirement_document_pipeline(
         logger.info("knowledge match scored | document_id=%s matches=%s", document_id, len(knowledge_matches))
 
         document = await update_requirement_document(
-            db,
-            document,
+            db, document,
             extracted_markdown=extracted.markdown,
             parsed_data=requirements_dict,
             capability_tags=capability_tags,

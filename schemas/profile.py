@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr
 
 from database.db_enum import UserRole
@@ -6,8 +8,8 @@ from database.db_enum import UserRole
 class ProfileResponse(BaseModel):
     id: int
     email: EmailStr
-    full_name: str | None = None
-    designation: str | None = None
+    full_name: Optional[str] = None
+    designation: Optional[str] = None
     role: UserRole
 
     class Config:
@@ -15,5 +17,5 @@ class ProfileResponse(BaseModel):
 
 
 class UpdateProfileRequest(BaseModel):
-    full_name: str | None = None
-    designation: str | None = None
+    full_name: Optional[str] = None
+    designation: Optional[str] = None

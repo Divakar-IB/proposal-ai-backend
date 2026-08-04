@@ -1,4 +1,7 @@
-def build_outline_instruction(outline: list[str] | None) -> str:
+from typing import Optional
+
+
+def build_outline_instruction(outline: Optional[list[str]]) -> str:
     """Renders a section's required subsection outline into an instruction
     the drafter must follow verbatim — entries starting with "- " are
     bullet points nested under the previous heading (e.g. the five use
@@ -9,8 +12,8 @@ def build_outline_instruction(outline: list[str] | None) -> str:
 
     lines = [f"  {item}" if item.startswith("- ") else f"### {item}" for item in outline]
     return (
-        'This section must be broken into the following subsections, using "### " headings '
-        'in exactly this order (items already prefixed with "- " are bullet points nested under '
+        "This section must be broken into the following subsections, using \"### \" headings "
+        "in exactly this order (items already prefixed with \"- \" are bullet points nested under "
         "the heading directly above them, not headings themselves):\n" + "\n".join(lines)
     )
 

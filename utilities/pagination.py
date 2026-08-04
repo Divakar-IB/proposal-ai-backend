@@ -1,5 +1,4 @@
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +11,7 @@ async def paginate(
     *,
     page: int = 1,
     limit: int = 10,
-    serializer: Callable[[Any], Any] | None = None,
+    serializer: Optional[Callable[[Any], Any]] = None,
 ) -> dict:
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
     total_pages = (total + limit - 1) // limit if limit > 0 else 0
@@ -21,8 +20,8 @@ async def paginate(
     data = [serializer(row) for row in rows] if serializer else list(rows)
 
     return {
-        "page": page,
-        "limit": limit,
+        "page": page, 
+        "limit": limit, 
         "total_pages": total_pages,
         "total": total,
         "data": data,

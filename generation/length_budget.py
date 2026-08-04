@@ -12,8 +12,7 @@ declares a relative `weight` in generation/sections.py and receives that share
 of the page budget.
 """
 
-from collections.abc import Iterable
-from typing import Any
+from typing import Any, Iterable
 
 # A page of the exported A4 templates holds roughly this many words of body
 # copy at the templates' 10.5pt/1.6-line-height body style.
@@ -44,7 +43,9 @@ def _weight_of(definition: dict[str, Any]) -> float:
     return weight if weight > 0 else 1.0
 
 
-def allocate_section_word_targets(page_count: int, definitions: Iterable[dict[str, Any]]) -> dict[str, int]:
+def allocate_section_word_targets(
+    page_count: int, definitions: Iterable[dict[str, Any]]
+) -> dict[str, int]:
     """section key -> word budget, summing to `page_count * WORDS_PER_PAGE`.
 
     Allocation is proportional to each section's `weight`. Any section whose
@@ -73,7 +74,8 @@ def allocate_section_word_targets(page_count: int, definitions: Iterable[dict[st
     while unclamped:
         weight_sum = sum(unclamped.values())
         newly_clamped = [
-            key for key, weight in unclamped.items() if remaining * (weight / weight_sum) < MIN_SECTION_WORDS
+            key for key, weight in unclamped.items()
+            if remaining * (weight / weight_sum) < MIN_SECTION_WORDS
         ]
         if not newly_clamped:
             break
@@ -92,7 +94,7 @@ def allocate_section_word_targets(page_count: int, definitions: Iterable[dict[st
         floors = {key: int(share) for key, share in exact.items()}
         leftover = int(round(remaining)) - sum(floors.values())
         by_remainder = sorted(exact, key=lambda key: exact[key] - floors[key], reverse=True)
-        for key in by_remainder[: max(leftover, 0)]:
+        for key in by_remainder[:max(leftover, 0)]:
             floors[key] += 1
         for key, value in floors.items():
             targets[key] = max(value, MIN_SECTION_WORDS)
