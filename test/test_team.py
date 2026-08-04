@@ -1,10 +1,13 @@
 """/team — admin-only member management: invite, list, role changes,
 activate/deactivate and soft delete."""
 
+import re
+
 import pytest
 from helpers import auth_headers
 
 from database.db_enum import UserRole
+from utilities.generic import MIN_TEMP_PASSWORD_LENGTH, generate_temp_password
 
 # ------------------------------------------------------------------
 # POST /team/invite
@@ -63,6 +66,31 @@ async def test_invite_reports_502_when_the_email_fails_but_keeps_the_account(cli
     from database.crud import get_user_by_email
 
     assert await get_user_by_email(db, "orphan@example.com") is not None
+
+
+def test_the_emailed_temporary_password_survives_an_email():
+    """Regression: the generator used to draw from all of string.punctuation,
+    so a password containing '<' ... '>' lost everything between them once a
+    mail client rendered the text part as HTML — invitees received as few as
+    4 characters and the login form rejects anything under 8."""
+
+    for _ in range(200):
+        password = generate_temp_password()
+
+        assert len(password) >= MIN_TEMP_PASSWORD_LENGTH
+        # Nothing an HTML renderer would treat as a tag, escape or smart-quote.
+        assert not set(password) & set("<>&\"'`\\")
+        assert re.sub(r"<[^>]*>", "", password) == password
+        # Clears the strength rules the invitee hits when changing it.
+        assert any(character.islower() for character in password)
+        assert any(character.isupper() for character in password)
+        assert any(character.isdigit() for character in password)
+        assert any(not character.isalnum() for character in password)
+
+
+def test_temporary_password_shorter_than_the_login_minimum_is_rejected():
+    with pytest.raises(ValueError):
+        generate_temp_password(4)
 
 
 async def test_invite_is_forbidden_for_members(client, member_headers):

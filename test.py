@@ -36,9 +36,3 @@
 
 #     print(f"Uploaded to S3 key: {key}")
 #     print(f"Presigned URL (1h): {S3Service().generate_presigned_url(key)}")
-
-import socket
-
-from config import config
-
-print(socket.gethostbyname(config.smtp.host))
