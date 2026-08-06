@@ -1,4 +1,4 @@
-from typing import Any, Optional, TypedDict
+from typing import Any, Optional, TypedDict, NotRequired
 
 
 class SectionState(TypedDict):
@@ -14,32 +14,31 @@ class SectionState(TypedDict):
 
 
 class ProposalGenerationState(TypedDict):
-    requirement_document_id: int
     proposal_id: int
-    user_id: int
-    requirements: dict[str, Any]
-    sections: list[SectionState]
-    max_retries: int
-    error: Optional[str]
-
-    # Working fields used by generation/graph.py's node functions.
     page_count: int
     generation_mode: str  # GenerationMode value
+
+    # Set by load_context
+    user_id: int
+    requirements: dict[str, Any]
     requirements_json: str
     proposal_title: str
     client_name: str
     additional_context: Optional[str]
-    # section key -> word budget for that section, summing to the requested
-    # page_count's word budget (see generation/length_budget.py).
     word_targets: dict[str, int]
     has_knowledge: bool
-    # Prefetched retrieval results: section key -> {chunks, document_by_id}
     section_retrievals: dict[str, dict[str, Any]]
-    # Current position in the linear graph's per-section loop
+
+    # Per-section loop state
     current_section_index: int
-    # The section state being drafted in the current iteration
     current_section: SectionState
-    # Populated as each section finishes. Sections complete in order since the
-    # graph is linear (one section at a time).
+
+    # Output
     persisted_sections: list[dict[str, Any]]  # {title, content, order_index}
     markdown_path: Optional[str]
+
+    # Legacy fields (may be unused)
+    requirement_document_id: NotRequired[int]
+    sections: NotRequired[list[SectionState]]
+    max_retries: NotRequired[int]
+    error: NotRequired[Optional[str]]
