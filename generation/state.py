@@ -33,7 +33,13 @@ class ProposalGenerationState(TypedDict):
     # page_count's word budget (see generation/length_budget.py).
     word_targets: dict[str, int]
     has_knowledge: bool
+    # Prefetched retrieval results: section key -> {chunks, document_by_id}
+    section_retrievals: dict[str, dict[str, Any]]
+    # Current position in the linear graph's per-section loop
     current_section_index: int
-    current_section: Optional[SectionState]
+    # The section state being drafted in the current iteration
+    current_section: SectionState
+    # Populated as each section finishes. Sections complete in order since the
+    # graph is linear (one section at a time).
     persisted_sections: list[dict[str, Any]]  # {title, content, order_index}
     markdown_path: Optional[str]
