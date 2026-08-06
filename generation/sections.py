@@ -12,8 +12,8 @@ def build_outline_instruction(outline: Optional[list[str]]) -> str:
 
     lines = [f"  {item}" if item.startswith("- ") else f"### {item}" for item in outline]
     return (
-        "This section must be broken into the following subsections, using \"### \" headings "
-        "in exactly this order (items already prefixed with \"- \" are bullet points nested under "
+        'This section must be broken into the following subsections, using "### " headings '
+        'in exactly this order (items already prefixed with "- " are bullet points nested under '
         "the heading directly above them, not headings themselves):\n" + "\n".join(lines)
     )
 

@@ -44,7 +44,7 @@ class EmailAttachment(NamedTuple):
 
 
 def _sender() -> str:
-    """"Name <address>" when a display name is configured, else the address."""
+    """ "Name <address>" when a display name is configured, else the address."""
 
     if config.smtp.from_name:
         return f"{config.smtp.from_name} <{config.smtp.from_email}>"
@@ -55,10 +55,7 @@ def _raise_for_status(response: httpx.Response, provider: str) -> None:
     if response.status_code >= 400:
         # The body carries the actual reason (unverified domain, bad key,
         # rejected recipient); without it the caller only sees a status code.
-        raise RuntimeError(
-            f"{provider} API rejected the message "
-            f"({response.status_code}): {response.text[:500]}"
-        )
+        raise RuntimeError(f"{provider} API rejected the message ({response.status_code}): {response.text[:500]}")
 
 
 # ----------------------------------------------------------------------
@@ -105,6 +102,7 @@ def send_via_smtp(
 # ----------------------------------------------------------------------
 # Provider HTTPS APIs
 # ----------------------------------------------------------------------
+
 
 def send_via_resend(
     to_email: str,

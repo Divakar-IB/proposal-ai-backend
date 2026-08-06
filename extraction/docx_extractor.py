@@ -111,13 +111,15 @@ class DocxExtractor(BaseExtractor):
         sizes = [run.font.size.pt for run in runs_with_text if run.font.size is not None]
         max_size = max(sizes) if sizes else body_size
 
-        return classify_heading(LineFeatures(
-            text=paragraph.text,
-            size=max_size,
-            body_size=body_size,
-            bold_ratio=bold_chars / total_chars if total_chars else 0.0,
-            underline_ratio=underline_chars / total_chars if total_chars else 0.0,
-        ))
+        return classify_heading(
+            LineFeatures(
+                text=paragraph.text,
+                size=max_size,
+                body_size=body_size,
+                bold_ratio=bold_chars / total_chars if total_chars else 0.0,
+                underline_ratio=underline_chars / total_chars if total_chars else 0.0,
+            )
+        )
 
     def _render_table(self, table: Table) -> str:
         rows = [self._row_values(row) for row in table.rows]

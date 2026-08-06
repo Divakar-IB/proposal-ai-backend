@@ -13,6 +13,7 @@ def _is_proposal_sourced(document: Optional[KnowledgeDocument]) -> bool:
 
     return document is not None and document.source_proposal_id is not None
 
+
 # Retrieval fetches this multiple of the caller's requested top_k from
 # Pinecone, so that after excluding proposal-derived chunks by default (see
 # resolve_and_filter_chunks) there's still a reasonable pool left to
@@ -99,12 +100,14 @@ def label_knowledge_match(chunk: dict, document: Optional[KnowledgeDocument]) ->
     }
 
     if _is_proposal_sourced(document):
-        match.update({
-            "type": "proposal",
-            "proposal_id": document.source_proposal_id,
-            "proposal_name": document.title,
-            "section_name": _section_name_from_breadcrumb(chunk.get("breadcrumb", ""), document.title),
-        })
+        match.update(
+            {
+                "type": "proposal",
+                "proposal_id": document.source_proposal_id,
+                "proposal_name": document.title,
+                "section_name": _section_name_from_breadcrumb(chunk.get("breadcrumb", ""), document.title),
+            }
+        )
 
     return match
 
@@ -121,11 +124,13 @@ def label_section_citation(chunk: dict, document: Optional[KnowledgeDocument]) -
     }
 
     if _is_proposal_sourced(document):
-        citation.update({
-            "type": "proposal",
-            "proposal_id": document.source_proposal_id,
-            "proposal_name": document.title,
-            "section_name": _section_name_from_breadcrumb(chunk.get("breadcrumb", ""), document.title),
-        })
+        citation.update(
+            {
+                "type": "proposal",
+                "proposal_id": document.source_proposal_id,
+                "proposal_name": document.title,
+                "section_name": _section_name_from_breadcrumb(chunk.get("breadcrumb", ""), document.title),
+            }
+        )
 
     return citation

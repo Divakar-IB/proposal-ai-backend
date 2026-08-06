@@ -32,7 +32,6 @@ class DocumentResponse(BaseModel):
 
     class Config:
         from_attributes = True
-            
 
 
 class DocumentListResponse(BaseModel):

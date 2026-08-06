@@ -1,16 +1,17 @@
 import os
 import tempfile
+from io import BytesIO
+from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 import boto3
-from io import BytesIO
 from botocore.exceptions import ClientError
-from pathlib import Path
-from uuid import uuid4
+
 from config import config
 
-class S3Client:
 
+class S3Client:
     _client = None
 
     @classmethod
@@ -24,6 +25,7 @@ class S3Client:
             )
 
         return cls._client
+
 
 # print("Bucket:", config.aws.bucket_name)
 # print("Region:", config.aws.region)
@@ -45,13 +47,7 @@ class S3PathBuilder:
         extension = Path(filename).suffix
         doc_segment = str(document_id) if document_id is not None else uuid4().hex
 
-        return (
-            f"input/knowledge/"
-            f"{user_id}/"
-            f"{category_id}/"
-            f"{doc_segment}/"
-            f"{uuid4()}{extension}"
-        )
+        return f"input/knowledge/{user_id}/{category_id}/{doc_segment}/{uuid4()}{extension}"
 
     @staticmethod
     def requirement_document(
@@ -68,12 +64,7 @@ class S3PathBuilder:
         extension = Path(filename).suffix
         doc_segment = str(requirement_document_id) if requirement_document_id is not None else uuid4().hex
 
-        return (
-            f"input/requirements/"
-            f"{user_id}/"
-            f"{doc_segment}/"
-            f"{uuid4()}{extension}"
-        )
+        return f"input/requirements/{user_id}/{doc_segment}/{uuid4()}{extension}"
 
     @staticmethod
     def proposal_docx(
@@ -81,12 +72,7 @@ class S3PathBuilder:
         proposal_id: int,
     ) -> str:
 
-        return (
-            f"output/proposals/"
-            f"{user_id}/"
-            f"{proposal_id}/"
-            f"proposal.docx"
-        )
+        return f"output/proposals/{user_id}/{proposal_id}/proposal.docx"
 
     @staticmethod
     def proposal_pdf(
@@ -94,12 +80,7 @@ class S3PathBuilder:
         proposal_id: int,
     ) -> str:
 
-        return (
-            f"output/proposals/"
-            f"{user_id}/"
-            f"{proposal_id}/"
-            f"proposal.pdf"
-        )
+        return f"output/proposals/{user_id}/{proposal_id}/proposal.pdf"
 
     @staticmethod
     def organization_logo(filename: str) -> str:
@@ -110,9 +91,9 @@ class S3PathBuilder:
         extension = Path(filename).suffix
         return f"input/organization/logo/{uuid4()}{extension}"
 
+
 # S3 Service (create,view, update, delete)
 class S3Service:
-
     def __init__(self):
         self.client = S3Client.get_client()
         self.bucket = config.aws.bucket_name
@@ -121,12 +102,7 @@ class S3Service:
     def upload_file(self, file, file_path: str):
 
         self.client.upload_fileobj(
-            Fileobj=file.file,
-            Bucket=self.bucket,
-            Key=file_path,
-            ExtraArgs={
-                "ContentType": file.content_type
-            }
+            Fileobj=file.file, Bucket=self.bucket, Key=file_path, ExtraArgs={"ContentType": file.content_type}
         )
 
         return file_path
@@ -138,18 +114,10 @@ class S3Service:
         content_type: str = "application/octet-stream",
     ):
 
-        self.client.upload_fileobj(
-            BytesIO(data),
-            self.bucket,
-            file_path,
-            ExtraArgs={
-                "ContentType": content_type
-            }
-        )
+        self.client.upload_fileobj(BytesIO(data), self.bucket, file_path, ExtraArgs={"ContentType": content_type})
 
         return file_path
 
-    
     # Download
     def download_file(self, file_path: str) -> bytes:
 
@@ -185,7 +153,6 @@ class S3Service:
     def file_exists(self, file_path: str):
 
         try:
-
             self.client.head_object(
                 Bucket=self.bucket,
                 Key=file_path,
@@ -194,7 +161,6 @@ class S3Service:
             return True
 
         except ClientError:
-
             return False
 
     # Copy
@@ -273,10 +239,7 @@ class S3Service:
         if "Contents" not in response:
             return []
 
-        return [
-            obj["Key"]
-            for obj in response["Contents"]
-        ]
+        return [obj["Key"] for obj in response["Contents"]]
 
     # Delete Folder
     def delete_folder(
@@ -289,14 +252,6 @@ class S3Service:
         if not files:
             return 0
 
-        self.client.delete_objects(
-            Bucket=self.bucket,
-            Delete={
-                "Objects": [
-                    {"Key": key}
-                    for key in files
-                ]
-            }
-        )
+        self.client.delete_objects(Bucket=self.bucket, Delete={"Objects": [{"Key": key} for key in files]})
 
         return len(files)

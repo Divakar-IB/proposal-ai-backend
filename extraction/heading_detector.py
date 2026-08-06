@@ -32,7 +32,7 @@ class LineFeatures:
     text: str
     size: float
     body_size: float
-    bold_ratio: float = 0.0       # fraction of the line's characters that are bold, 0..1
+    bold_ratio: float = 0.0  # fraction of the line's characters that are bold, 0..1
     underline_ratio: float = 0.0  # fraction of the line's characters that are underlined, 0..1
 
 

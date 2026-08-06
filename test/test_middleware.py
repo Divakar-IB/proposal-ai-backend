@@ -94,9 +94,7 @@ async def test_cors_headers_survive_an_error_response(client, member, monkeypatc
 
     monkeypatch.setattr(category_router, "get_category_by_id", explode)
 
-    response = await client.delete(
-        "/category/1", headers={**auth_headers(member), "Origin": "http://localhost:3000"}
-    )
+    response = await client.delete("/category/1", headers={**auth_headers(member), "Origin": "http://localhost:3000"})
 
     assert response.status_code == 500
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"

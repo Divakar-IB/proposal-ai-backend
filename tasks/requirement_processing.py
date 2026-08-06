@@ -55,7 +55,9 @@ async def process_requirement_document_pipeline(
         extracted = run_extraction(temp_path, document.file_name, document.extension)
         logger.info(
             "extraction completed | document_id=%s chars=%s pages=%s",
-            document_id, len(extracted.markdown), len(extracted.pages),
+            document_id,
+            len(extracted.markdown),
+            len(extracted.pages),
         )
 
         requirements = parse_requirements(extracted.markdown, additional_context=additional_context)
@@ -71,7 +73,8 @@ async def process_requirement_document_pipeline(
         logger.info("knowledge match scored | document_id=%s matches=%s", document_id, len(knowledge_matches))
 
         document = await update_requirement_document(
-            db, document,
+            db,
+            document,
             extracted_markdown=extracted.markdown,
             parsed_data=requirements_dict,
             capability_tags=capability_tags,

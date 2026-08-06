@@ -9,7 +9,7 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
     embeddings: list[list[float]] = []
     for start in range(0, len(texts), BATCH_SIZE):
-        batch = texts[start:start + BATCH_SIZE]
+        batch = texts[start : start + BATCH_SIZE]
         embeddings.extend(HFInferenceEmbeddingClient.embed(batch))
     return embeddings
 

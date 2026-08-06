@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Cancel an in-progress run for the same branch/PR when a new commit lands,
+# so pushing twice in a row doesn't burn double the runner time.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# No job here needs to write anything back to the repo (no PR comments, no
+# pushed commits, no package publishing) — default to read-only and widen a
+# specific job later if a future stage (e.g. a coverage-comment bot) needs it.
+permissions:
+  contents: read
+
+env:
+  # Single source of truth for the interpreter version; keep in step with
+  # .python-version / pyproject.toml's requires-python.
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        # Pinned to the exact release, not the floating `v9` major tag — that
+        # tag failed to resolve on GitHub's action-cache twice in a row
+        # ("Unable to resolve action `astral-sh/setup-uv@v9`, unable to find
+        # version `v9`"), while the immutable v9.0.0 tag isn't subject to
+        # whatever propagation issue caused that.
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Ruff check — enforced (E, W, F, I)
+        # --ignore B,RUF (rather than --select E,W,F,I) deliberately keeps
+        # pyproject.toml's own `select`/`ignore` in force and just removes
+        # the report-only families from THIS invocation — --select would
+        # replace the config's select list outright and silently drop the
+        # project's E501 ignore along with it. This step fails the job.
+        run: uv run ruff check --ignore B,RUF .
+
+      - name: Ruff check — report only (B, RUF)
+        # Always shown in the log for visibility, per the project's linting
+        # policy — flake8-bugbear and Ruff-specific findings are surfaced,
+        # never auto-fixed, and never allowed to block the pipeline.
+        run: uv run ruff check --select B,RUF .
+        continue-on-error: true
+
+      - name: Ruff format check
+        # --check verifies formatting without rewriting files — the write
+        # variant (`ruff format .`) is for local use only, never in CI.
+        run: uv run ruff format . --check
+
+  test:
+    name: Test (pytest)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # The test suite never calls these for real (S3/SMTP/Pinecone/the LLM
+      # are all stubbed in test/conftest.py), but importing the app still
+      # imports weasyprint, opencv (via paddlex[ocr]) and paddlepaddle at
+      # module load time, and those fail at import — not just at call time —
+      # without their native shared libraries. This mirrors the runtime
+      # `apt-get install` list in the project's Dockerfile exactly, so CI
+      # depends on nothing beyond what's already documented there.
+      - name: Install native library dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pandoc \
+            libpango-1.0-0 \
+            libpangoft2-1.0-0 \
+            libharfbuzz0b \
+            libcairo2 \
+            libgdk-pixbuf-2.0-0 \
+            libffi8 \
+            shared-mime-info \
+            fonts-dejavu-core \
+            fonts-liberation \
+            libgl1 \
+            libglib2.0-0 \
+            libsm6 \
+            libxext6 \
+            libxrender1 \
+            libgomp1
+
+      - name: Install uv
+        # Pinned to the exact release, not the floating `v9` major tag — that
+        # tag failed to resolve on GitHub's action-cache twice in a row
+        # ("Unable to resolve action `astral-sh/setup-uv@v9`, unable to find
+        # version `v9`"), while the immutable v9.0.0 tag isn't subject to
+        # whatever propagation issue caused that.
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run tests
+        # test/conftest.py sets its own CONFIG env var and backs the app with
+        # an in-memory SQLite database — no secrets, services, or extra env
+        # vars needed here. The 3 xfail(strict=True) tests are expected
+        # non-failures; pytest's own exit code already reflects that.
+        run: uv run pytest

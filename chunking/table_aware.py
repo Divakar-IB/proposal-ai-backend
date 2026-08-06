@@ -120,9 +120,7 @@ def pack(pieces: list[str], chunk_size: int) -> list[str]:
     return packed
 
 
-def split_section(
-    text: str, chunk_size: int, split_prose: Callable[[str], list[str]]
-) -> list[str]:
+def split_section(text: str, chunk_size: int, split_prose: Callable[[str], list[str]]) -> list[str]:
     """Splits one oversized section, keeping Markdown tables coherent.
 
     `split_prose` handles non-table runs (the existing recursive splitter), so

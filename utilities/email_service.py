@@ -42,7 +42,10 @@ async def send_email(
     await asyncio.to_thread(transport, to_email, subject, body, attachments, html_body)
     logger.info(
         "email sent | provider=%s to=%s subject=%r %.2fs",
-        config.smtp.provider, to_email, subject, time.perf_counter() - started,
+        config.smtp.provider,
+        to_email,
+        subject,
+        time.perf_counter() - started,
     )
 
 
@@ -61,9 +64,7 @@ async def send_otp_email(to_email: str, otp: str, expires_in_minutes: int) -> No
         raise
 
 
-async def send_proposal_export_email(
-    to_email: str, proposal_title: str, attachment: EmailAttachment
-) -> None:
+async def send_proposal_export_email(to_email: str, proposal_title: str, attachment: EmailAttachment) -> None:
     subject = f"Proposal Document - {proposal_title}"
     body = (
         "Dear Recipient,\n\n"

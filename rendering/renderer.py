@@ -35,9 +35,7 @@ def render_docx_from_html(html: str, reference_docx: Optional[Path] = None) -> b
     fd, tmp_path = tempfile.mkstemp(suffix=".docx")
     os.close(fd)
     try:
-        pypandoc.convert_text(
-            html, "docx", format="html", outputfile=tmp_path, extra_args=extra_args
-        )
+        pypandoc.convert_text(html, "docx", format="html", outputfile=tmp_path, extra_args=extra_args)
         with open(tmp_path, "rb") as f:
             return f.read()
     finally:

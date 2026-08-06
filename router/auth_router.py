@@ -10,26 +10,25 @@ from authentication.auth_service import (
     set_new_password,
     verify_otp,
 )
-from authentication.dependency import get_current_user
+from authentication.dependency import get_current_user, require_role
 from database.database import get_db
 from database.db_enum import UserRole
 from schemas.auth import (
-    ForgotPasswordRequest,
-    ForgotPasswordResponse,
-    NewPasswordRequest,
-    NewPasswordResponse,
-    ResetPasswordRequest,
-    ResetPasswordResponse,
     CreateUserRequest,
     CreateUserResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
     LoginResponse,
+    NewPasswordRequest,
+    NewPasswordResponse,
     RegisterRequest,
     RegisterResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     VerifyOtpRequest,
     VerifyOtpResponse,
 )
-from authentication.dependency import require_role
 
 router = APIRouter(
     prefix="/auth",

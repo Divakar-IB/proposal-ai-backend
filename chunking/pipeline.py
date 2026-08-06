@@ -31,11 +31,13 @@ def chunk_document(
 
         for piece in split_oversized_section(section_content, chunk_size, chunk_overlap):
             prefixed = f"{full_breadcrumb}: {piece}" if full_breadcrumb else piece
-            chunks.append(Chunk(
-                content=prefixed,
-                breadcrumb=full_breadcrumb,
-                chunk_index=len(chunks),
-                token_count=count_tokens(prefixed),
-            ))
+            chunks.append(
+                Chunk(
+                    content=prefixed,
+                    breadcrumb=full_breadcrumb,
+                    chunk_index=len(chunks),
+                    token_count=count_tokens(prefixed),
+                )
+            )
 
     return chunks

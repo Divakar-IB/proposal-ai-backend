@@ -81,6 +81,7 @@ os.environ["CONFIG"] = json.dumps(
 from datetime import datetime  # noqa: E402
 
 import pytest  # noqa: E402
+from helpers import TEST_PASSWORD, auth_headers  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import JSON, String  # noqa: E402
 from sqlalchemy.dialects.postgresql import ARRAY as PostgresARRAY  # noqa: E402
@@ -89,11 +90,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool  # noqa: E402
 from sqlalchemy.types import TEXT, TypeDecorator  # noqa: E402
 
+# bcrypt is deliberately expensive, and the suite hashes a password for nearly
+# every user it creates — at the production work factor that alone dominates the
+# run. Turn it down to the minimum for tests; the real bcrypt code path (and
+# every hash/verify call site) is still exercised.
+import authentication.dependency as auth_dependency  # noqa: E402
 import database.database as database_module  # noqa: E402
 import main  # noqa: E402
 from authentication.dependency import hash_password  # noqa: E402
 from database.database import Base, get_db  # noqa: E402
-from helpers import TEST_PASSWORD, auth_headers  # noqa: E402
 from database.db_enum import (  # noqa: E402
     DocumentAvailability,
     DocumentStatus,
@@ -114,18 +119,13 @@ from database.models import (  # noqa: E402
 )
 from utilities.s3_service import S3Service  # noqa: E402
 
-# bcrypt is deliberately expensive, and the suite hashes a password for nearly
-# every user it creates — at the production work factor that alone dominates the
-# run. Turn it down to the minimum for tests; the real bcrypt code path (and
-# every hash/verify call site) is still exercised.
-import authentication.dependency as auth_dependency  # noqa: E402
-
 auth_dependency.pwd_context.update(bcrypt__default_rounds=4)
 
 
 # ------------------------------------------------------------------
 # Postgres-only column types -> SQLite equivalents
 # ------------------------------------------------------------------
+
 
 class _JsonEncodedList(TypeDecorator):
     """Stand-in for Postgres ``ARRAY(String)``: stores the list as a JSON blob
@@ -160,6 +160,7 @@ _add_sqlite_variants()
 # ------------------------------------------------------------------
 # Database
 # ------------------------------------------------------------------
+
 
 @pytest.fixture
 async def engine():
@@ -233,6 +234,7 @@ async def client(app):
 # ------------------------------------------------------------------
 # Outbound dependencies — never hit the network from a test
 # ------------------------------------------------------------------
+
 
 class FakeS3:
     """Records what the app tried to do with S3 so tests can assert on it."""
@@ -388,9 +390,7 @@ def stub_renderers(monkeypatch):
 
     import services.proposal_export_service as export_service
 
-    monkeypatch.setattr(
-        export_service, "render_proposal_html", lambda *args, **kwargs: "<html>fake</html>"
-    )
+    monkeypatch.setattr(export_service, "render_proposal_html", lambda *args, **kwargs: "<html>fake</html>")
     monkeypatch.setattr(export_service, "render_pdf_from_html", lambda html: b"%PDF-1.7 fake")
     monkeypatch.setattr(
         export_service,
@@ -402,6 +402,7 @@ def stub_renderers(monkeypatch):
 # ------------------------------------------------------------------
 # Data factories
 # ------------------------------------------------------------------
+
 
 class Factory:
     """Thin helpers over the ORM — every test that needs a row builds it here
@@ -451,9 +452,7 @@ class Factory:
         kwargs.setdefault("role", UserRole.ADMIN)
         return await self.user(**kwargs)
 
-    async def category(
-        self, *, name: str | None = None, description: str = "desc", is_active: bool = True
-    ) -> Category:
+    async def category(self, *, name: str | None = None, description: str = "desc", is_active: bool = True) -> Category:
         return await self._add(
             Category(name=name or f"Category {self._next()}", description=description, is_active=is_active)
         )
@@ -592,6 +591,7 @@ def factory(db) -> Factory:
 # ------------------------------------------------------------------
 # Auth fixtures (auth_headers itself lives in helpers.py)
 # ------------------------------------------------------------------
+
 
 @pytest.fixture
 async def member(factory) -> User:

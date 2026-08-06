@@ -6,10 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.crud import (
     build_proposals_query,
-    delete_proposal as delete_proposal_row,
     get_proposal_by_id,
     get_proposal_status_counts,
     update_proposal,
+)
+from database.crud import (
+    delete_proposal as delete_proposal_row,
 )
 from database.db_enum import ProposalStatus
 from database.models import Proposal
@@ -50,7 +52,9 @@ async def set_proposal_status(db: AsyncSession, proposal_id: int, new_status: Pr
 
     logger.info(
         "proposal status changed | proposal_id=%s from=%s to=%s",
-        proposal_id, proposal.status.value, new_status.value,
+        proposal_id,
+        proposal.status.value,
+        new_status.value,
     )
     return await update_proposal(db, proposal, status=new_status)
 
