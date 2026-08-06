@@ -24,7 +24,7 @@ from generation.length_budget import (
     build_length_instruction,
 )
 from generation.markdown_sections import assemble_markdown
-from generation.nodes import draft_one_section_stream, retrieve_chunks_for_section, section_citations
+from generation.nodes import draft_one_section_stream, prefetch_section_retrievals, section_citations
 from generation.requirement_context import build_combined_requirements_json
 from generation.sections import SECTION_DEFINITIONS, build_outline_instruction
 from generation.state import ProposalGenerationState, SectionState
@@ -48,14 +48,10 @@ def _build_drafting_note(
     clause is deliberately last-but-one so it sits close to the outline it
     constrains."""
 
-    header = "\n".join(
-        part
-        for part in [
-            f"Proposal: {proposal_title} — Client: {client_name}",
-            f"Additional context: {additional_context}" if additional_context else None,
-        ]
-        if part
-    )
+    header = "\n".join(part for part in [
+        f"Proposal: {proposal_title} — Client: {client_name}",
+        f"Additional context: {additional_context}" if additional_context else None,
+    ] if part)
 
     parts = [
         header,
@@ -84,7 +80,9 @@ async def load_context(state: ProposalGenerationState) -> dict[str, Any]:
         requirements_json = build_combined_requirements_json(requirement_documents)
         requirements = json.loads(requirements_json) if requirements_json else {}
 
-        has_knowledge = generation_mode == GenerationMode.KNOWLEDGE_AUGMENTED and await has_any_knowledge_chunks(db)
+        has_knowledge = (
+            generation_mode == GenerationMode.KNOWLEDGE_AUGMENTED and await has_any_knowledge_chunks(db)
+        )
 
         proposal_title = proposal.title
         client_name = proposal.client_name
@@ -93,11 +91,21 @@ async def load_context(state: ProposalGenerationState) -> dict[str, Any]:
 
         await delete_proposal_sections_for_proposal(db, proposal.id)
         await update_proposal(
-            db,
-            proposal,
+            db, proposal,
             status=ProposalStatus.GENERATING,
             generation_mode=generation_mode,
             page_count=page_count,
+        )
+
+    # Retrieval for every section happens here, before any drafting — it only
+    # needs the requirements, so there's nothing to gain from deferring it into
+    # the per-section loop and 11 extra serial round trips to lose. Opened as a
+    # separate session deliberately: the batched embed and Pinecone calls inside
+    # are remote, and the status write above shouldn't sit in an uncommitted
+    # transaction while they run.
+    async with db_session() as db:
+        section_retrievals = await prefetch_section_retrievals(
+            db, SECTION_DEFINITIONS, requirements, has_knowledge,
         )
 
     # One weighted split of the page budget up front, so every section knows
@@ -112,26 +120,17 @@ async def load_context(state: ProposalGenerationState) -> dict[str, Any]:
         logger.warning(
             "page_count below the %s-page minimum | proposal_id=%s page_count=%s: sections "
             "cannot cover their required subsections at this length",
-            MIN_PROPOSAL_PAGES,
-            proposal_id,
-            page_count,
+            MIN_PROPOSAL_PAGES, proposal_id, page_count,
         )
     if allocated > budget:
         logger.warning(
             "page_count too small for the section list | proposal_id=%s page_count=%s "
             "budget_words=%s floor_words=%s sections=%s — the export will run long",
-            proposal_id,
-            page_count,
-            budget,
-            allocated,
-            len(SECTION_DEFINITIONS),
+            proposal_id, page_count, budget, allocated, len(SECTION_DEFINITIONS),
         )
     logger.info(
         "section word budget allocated | proposal_id=%s page_count=%s budget_words=%s allocated=%s",
-        proposal_id,
-        page_count,
-        budget,
-        allocated,
+        proposal_id, page_count, budget, allocated,
     )
 
     return {
@@ -143,6 +142,7 @@ async def load_context(state: ProposalGenerationState) -> dict[str, Any]:
         "additional_context": additional_context,
         "word_targets": word_targets,
         "has_knowledge": has_knowledge,
+        "section_retrievals": section_retrievals,
         "current_section_index": 0,
         "sections": [],
         "persisted_sections": [],
@@ -153,12 +153,9 @@ async def start_section(state: ProposalGenerationState) -> dict[str, Any]:
     definition = SECTION_DEFINITIONS[state["current_section_index"]]
 
     drafting_note = _build_drafting_note(
-        state["proposal_title"],
-        state["client_name"],
-        state["additional_context"],
+        state["proposal_title"], state["client_name"], state["additional_context"],
         state["word_targets"].get(definition["key"], MIN_SECTION_WORDS),
-        state["page_count"],
-        definition.get("outline"),
+        state["page_count"], definition.get("outline"),
     )
 
     section_state: SectionState = {
@@ -180,15 +177,16 @@ async def start_section(state: ProposalGenerationState) -> dict[str, Any]:
 
 
 async def retrieve(state: ProposalGenerationState) -> dict[str, Any]:
+    """Picks up this section's share of the retrieval that load_context has
+    already performed. Kept as its own node so the graph shape (and the
+    per-section boundary it marks) is unchanged."""
+
     section_state = state["current_section"]
 
-    async with db_session() as db:
-        section_state["retrieved_chunks"] = await retrieve_chunks_for_section(
-            db,
-            section_state,
-            state["requirements"],
-            state["has_knowledge"],
-        )
+    prefetched = state["section_retrievals"].get(section_state["key"], {})
+    section_state["retrieved_chunks"] = prefetched.get("chunks", [])
+    # section_citations reads this to label each chunk without a second lookup.
+    section_state["_document_by_id"] = prefetched.get("document_by_id", {})
 
     return {"current_section": section_state}
 
@@ -235,14 +233,49 @@ async def _aiter_blocking(make_iterator: Callable[[], Iterator[str]]) -> AsyncIt
         await producer
 
 
+# Emitting one SSE frame per LLM token means tens of thousands of frames per
+# proposal, each carrying its own json.dumps and HTTP chunk (see
+# generation/proposal_generator.py::_sse). Deltas are instead accumulated and
+# flushed on whichever of these two bounds is hit first. The client's contract
+# is unchanged — every frame still carries plain text to append in order, so
+# the reassembled section is byte-identical — and 50ms is short enough that the
+# text still arrives as it is written.
+SECTION_CHUNK_FLUSH_SECONDS = 0.05
+SECTION_CHUNK_FLUSH_CHARS = 256
+
+
 async def draft(state: ProposalGenerationState) -> dict[str, Any]:
     section_state = state["current_section"]
     writer = get_stream_writer()
+    loop = asyncio.get_running_loop()
 
     content_parts: list[str] = []
-    async for delta in _aiter_blocking(lambda: draft_one_section_stream(section_state, state["requirements_json"])):
+    pending: list[str] = []
+    pending_chars = 0
+    last_flush = loop.time()
+
+    def flush_pending() -> None:
+        nonlocal pending_chars
+        if not pending:
+            return
+        writer({"event": "section_chunk", "data": {"content": "".join(pending)}})
+        pending.clear()
+        pending_chars = 0
+
+    async for delta in _aiter_blocking(
+        lambda: draft_one_section_stream(section_state, state["requirements_json"])
+    ):
         content_parts.append(delta)
-        writer({"event": "section_chunk", "data": {"content": delta}})
+        pending.append(delta)
+        pending_chars += len(delta)
+
+        now = loop.time()
+        if pending_chars >= SECTION_CHUNK_FLUSH_CHARS or now - last_flush >= SECTION_CHUNK_FLUSH_SECONDS:
+            flush_pending()
+            last_flush = now
+
+    # Whatever is left over when the stream ends, regardless of either bound.
+    flush_pending()
 
     section_state["content"] = "".join(content_parts).strip()
     section_state["citations"] = section_citations(section_state)
@@ -256,32 +289,26 @@ async def persist_section(state: ProposalGenerationState) -> dict[str, Any]:
     order_index = state["current_section_index"]
 
     async with db_session() as db:
-        await create_proposal_sections(
-            db,
-            [
-                ProposalSection(
-                    proposal_id=state["proposal_id"],
-                    section_key=section_state["key"],
-                    title=section_state["title"],
-                    order_index=order_index,
-                    content=section_state["content"],
-                    citations=section_state["citations"],
-                    status=ProposalSectionStatus.APPROVED,
-                )
-            ],
-        )
+        await create_proposal_sections(db, [
+            ProposalSection(
+                proposal_id=state["proposal_id"],
+                section_key=section_state["key"],
+                title=section_state["title"],
+                order_index=order_index,
+                content=section_state["content"],
+                citations=section_state["citations"],
+                status=ProposalSectionStatus.APPROVED,
+            )
+        ])
 
     writer = get_stream_writer()
     writer({"event": "section_done", "data": {"name": section_state["title"]}})
 
-    persisted_sections = [
-        *state["persisted_sections"],
-        {
-            "title": section_state["title"],
-            "content": section_state["content"],
-            "order_index": order_index,
-        },
-    ]
+    persisted_sections = [*state["persisted_sections"], {
+        "title": section_state["title"],
+        "content": section_state["content"],
+        "order_index": order_index,
+    }]
 
     return {
         "persisted_sections": persisted_sections,
@@ -304,8 +331,7 @@ async def compile_proposal(state: ProposalGenerationState) -> dict[str, Any]:
 
     logger.info(
         "proposal generation completed | proposal_id=%s sections=%s",
-        state["proposal_id"],
-        len(state["persisted_sections"]),
+        state["proposal_id"], len(state["persisted_sections"]),
     )
 
     return {"markdown_path": s3_key}

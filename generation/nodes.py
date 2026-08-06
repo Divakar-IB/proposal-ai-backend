@@ -1,10 +1,11 @@
+import asyncio
 import json
 from typing import Any, Iterator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.db_enum import ProposalSectionStatus
-from embedding.embedder import embed_query
+from embedding.embedder import embed_texts
 from generation.schema import QualityCheckResult
 from llm.chat_client import GroqChatClient
 from prompts.proposal_generation import DRAFT_SYSTEM_PROMPT, DRAFT_USER_TEMPLATE, build_context_block
@@ -12,8 +13,6 @@ from prompts.proposal_review import (
     QUALITY_CHECK_SYSTEM_PROMPT,
     QUALITY_CHECK_TOOL,
     QUALITY_CHECK_USER_TEMPLATE,
-)
-from prompts.proposal_review import (
     TOOL_NAME as QUALITY_CHECK_TOOL_NAME,
 )
 from services.citation_service import (
@@ -21,9 +20,27 @@ from services.citation_service import (
     resolve_and_filter_chunks,
     retrieval_pool_size,
 )
+from utilities.logger import get_logger
 from vectorstore.knowledge_store import query_chunks
 
+logger = get_logger(__name__)
+
 TOP_K_SECTION_CHUNKS = 8
+
+
+class EmptySectionError(RuntimeError):
+    """The model streamed no usable content for a section.
+
+    Its own class because this used to be invisible: `stream_complete` yields
+    only content deltas, so a response that spent its whole allowance on
+    reasoning tokens produced an empty string that was persisted as a finished
+    section. Raising instead means the section fails loudly and the proposal is
+    marked FAILED rather than shipping a hole.
+    """
+
+
+class TruncatedSectionError(RuntimeError):
+    """The model hit its token cap mid-section (finish_reason != "stop")."""
 
 
 def _build_query_text(section_state: dict, requirements: dict) -> str:
@@ -45,35 +62,88 @@ def _build_query_text(section_state: dict, requirements: dict) -> str:
     return "\n".join([section_state["title"], *values])
 
 
-async def retrieve_chunks_for_section(
+async def prefetch_section_retrievals(
     db: AsyncSession,
-    section_state: dict[str, Any],
+    definitions: list[dict[str, Any]],
     requirements: dict,
     has_knowledge: bool,
-) -> list[dict]:
-    """Per-section retrieval — each section queries the knowledge base with
-    its own query_fields-derived text, rather than one retrieval pass shared
-    across the whole document.
+) -> dict[str, dict[str, Any]]:
+    """Runs every section's retrieval once, up front, instead of once per
+    section inside the drafting loop.
 
-    Excludes chunks sourced from a previously approved proposal by default
-    (see services.citation_service.resolve_and_filter_chunks) — otherwise
-    another client's approved content could get pasted verbatim into this
-    draft. The resolved source documents are stashed on section_state so
-    section_citations (below) can label them without a second lookup."""
+    A section's retrieval depends only on its own `query_fields` and the
+    combined requirements JSON — never on a previously drafted section — so
+    all of it is computable before any drafting starts. Hoisting it here
+    collapses what was one embed round trip plus one Pinecone query *per
+    section* into a single batched embed call plus concurrent Pinecone
+    queries, and resolves the source documents over one database session
+    instead of opening one per section.
 
+    Query text, `top_k` and the filtering rules are unchanged, so the chunks
+    each section receives are the same ones the per-section path produced —
+    this is a scheduling change, not a retrieval change.
+
+    Returns section key -> {"chunks": [...], "document_by_id": {...}}, i.e.
+    exactly the two values retrieve_chunks_for_section used to leave on the
+    section state.
+    """
+
+    empty = {
+        definition["key"]: {"chunks": [], "document_by_id": {}} for definition in definitions
+    }
+
+    # Same short-circuit as retrieve_chunks_for_section — don't touch the
+    # embedding endpoint or Pinecone when the caller didn't ask for knowledge
+    # augmentation, or when no knowledge chunk exists at all.
     if not has_knowledge:
-        return []
+        return empty
 
-    query_text = _build_query_text(section_state, requirements)
-    if not query_text.strip():
-        return []
+    query_texts: dict[str, str] = {}
+    for definition in definitions:
+        query_text = _build_query_text(definition, requirements)
+        if query_text.strip():
+            query_texts[definition["key"]] = query_text
 
-    query_embedding = embed_query(query_text)
-    pool = query_chunks(query_embedding, top_k=retrieval_pool_size(TOP_K_SECTION_CHUNKS))
+    if not query_texts:
+        return empty
 
-    resolved = await resolve_and_filter_chunks(db, pool, top_k=TOP_K_SECTION_CHUNKS)
-    section_state["_document_by_id"] = {document.id: document for _chunk, document in resolved if document is not None}
-    return [chunk for chunk, _document in resolved]
+    keys = list(query_texts)
+
+    # One HTTP call for every section's query: embed_texts already batches up
+    # to BATCH_SIZE (32), so the whole section list fits in a single request.
+    # Dispatched to a thread because the embedding and Pinecone clients are
+    # both blocking — iterating them on the event loop stalls every other
+    # request in the process, including in-flight SSE streams.
+    embeddings = await asyncio.to_thread(embed_texts, [query_texts[key] for key in keys])
+    if len(embeddings) != len(keys):
+        # Surfaced rather than silently zipped short: a partial embedding
+        # response would drop knowledge grounding from arbitrary sections
+        # while still producing a plausible-looking proposal. Generation
+        # already turns exceptions into a FAILED status plus an SSE error
+        # event (see generation/proposal_generator.py).
+        raise ValueError(
+            f"embedding endpoint returned {len(embeddings)} vectors for {len(keys)} section queries"
+        )
+
+    pool_size = retrieval_pool_size(TOP_K_SECTION_CHUNKS)
+    pools = await asyncio.gather(*(
+        asyncio.to_thread(query_chunks, embedding, pool_size) for embedding in embeddings
+    ))
+
+    results = dict(empty)
+    # Sequential on purpose: a single AsyncSession must not be driven
+    # concurrently. These are local database round trips — the remote calls
+    # that made the per-section version slow have already been batched above.
+    for key, pool in zip(keys, pools):
+        resolved = await resolve_and_filter_chunks(db, pool, top_k=TOP_K_SECTION_CHUNKS)
+        results[key] = {
+            "chunks": [chunk for chunk, _document in resolved],
+            "document_by_id": {
+                document.id: document for _chunk, document in resolved if document is not None
+            },
+        }
+
+    return results
 
 
 def _build_draft_messages(section_state: dict[str, Any], requirements_json: str) -> list[dict]:
@@ -155,7 +225,9 @@ def run_quality_check(section_state: dict[str, Any], requirements_json: str) -> 
     return QualityCheckResult.model_validate(parsed)
 
 
-def decide_section_status(result: QualityCheckResult, force_approve: bool = False) -> tuple[str, Optional[str], bool]:
+def decide_section_status(
+    result: QualityCheckResult, force_approve: bool = False
+) -> tuple[str, Optional[str], bool]:
     """Maps a quality-check verdict to (status, feedback-to-seed-the-next-draft,
     review_flag). `force_approve` lets a caller with a bounded retry budget
     (the automated pipeline) still land on a terminal APPROVED state instead
