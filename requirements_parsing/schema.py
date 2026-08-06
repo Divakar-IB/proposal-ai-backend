@@ -18,9 +18,7 @@ class RequirementsSchema(BaseModel):
     technical_requirements: list[str] = Field(
         default_factory=list, description="Technology, platform, or technical constraints called for"
     )
-    evaluation_criteria: list[str] = Field(
-        default_factory=list, description="How proposals will be scored/evaluated"
-    )
+    evaluation_criteria: list[str] = Field(default_factory=list, description="How proposals will be scored/evaluated")
     constraints: list[str] = Field(
         default_factory=list, description="Compliance, legal, security, or other hard constraints"
     )

@@ -3,23 +3,22 @@ listing/filtering, retrieval and delete-with-cleanup."""
 
 import pytest
 from helpers import auth_headers, upload
+from sqlalchemy import func, select
 
 from database.crud import get_knowledge_document_by_id
 from database.db_enum import DocumentAvailability, IngestionStatus
 from database.models import KnowledgeChunk
-from sqlalchemy import func, select
 
 
 async def create_document(client, headers, *, category_id, name="Case Study", **extra):
     data = {"document_name": name, "category_id": str(category_id), **extra}
-    return await client.post(
-        "/document/upload", headers=headers, data=data, files={"file": upload("case-study.pdf")}
-    )
+    return await client.post("/document/upload", headers=headers, data=data, files={"file": upload("case-study.pdf")})
 
 
 # ------------------------------------------------------------------
 # POST /document/upload — create
 # ------------------------------------------------------------------
+
 
 async def test_upload_creates_a_document(client, member, factory, fake_s3, stub_background_pipelines):
     category = await factory.category(name="Case Studies")
@@ -45,17 +44,13 @@ async def test_upload_creates_a_document(client, member, factory, fake_s3, stub_
     assert stub_background_pipelines["process_knowledge_document"] == [body["id"]]
 
 
-async def test_upload_records_the_uploader_from_the_token_not_the_form(
-    client, member, factory
-):
+async def test_upload_records_the_uploader_from_the_token_not_the_form(client, member, factory):
     """Identity always comes from `current_user`; a user_id in the body is
     ignored rather than trusted."""
 
     category = await factory.category()
 
-    response = await create_document(
-        client, auth_headers(member), category_id=category.id, user_id="999999"
-    )
+    response = await create_document(client, auth_headers(member), category_id=category.id, user_id="999999")
 
     assert response.status_code == 200
     assert response.json()["user_id"] == member.id
@@ -98,9 +93,7 @@ async def test_upload_accepts_an_explicit_availability_status(client, member, fa
         ("file", "file"),
     ],
 )
-async def test_upload_requires_name_category_and_file_on_create(
-    client, member, factory, omit, expected_in_detail
-):
+async def test_upload_requires_name_category_and_file_on_create(client, member, factory, omit, expected_in_detail):
     category = await factory.category()
     data = {"document_name": "X", "category_id": str(category.id)}
     files = {"file": upload()}
@@ -108,9 +101,7 @@ async def test_upload_requires_name_category_and_file_on_create(
     if omit == "file":
         files = {}
 
-    response = await client.post(
-        "/document/upload", headers=auth_headers(member), data=data, files=files or None
-    )
+    response = await client.post("/document/upload", headers=auth_headers(member), data=data, files=files or None)
 
     assert response.status_code == 422
     assert expected_in_detail in str(response.json()["detail"])
@@ -176,6 +167,7 @@ async def test_upload_requires_a_token(client, factory):
 # ------------------------------------------------------------------
 # POST /document/upload — edit (document_id supplied)
 # ------------------------------------------------------------------
+
 
 async def test_edit_updates_metadata_without_touching_the_file(
     client, member, factory, db, fake_s3, stub_background_pipelines
@@ -316,6 +308,7 @@ async def test_edit_502s_when_the_replacement_upload_fails(client, member, facto
 # GET /document/list
 # ------------------------------------------------------------------
 
+
 async def test_list_documents_returns_pagination_metadata(client, member, factory):
     category = await factory.category()
     for _ in range(3):
@@ -346,9 +339,7 @@ async def test_list_documents_filters_by_category(client, member, factory):
     await factory.knowledge_document(user=member, category=wanted, title="Keep")
     await factory.knowledge_document(user=member, category=other, title="Drop")
 
-    response = await client.get(
-        f"/document/list?category_id={wanted.id}", headers=auth_headers(member)
-    )
+    response = await client.get(f"/document/list?category_id={wanted.id}", headers=auth_headers(member))
 
     assert [row["document_name"] for row in response.json()["data"]] == ["Keep"]
 
@@ -389,9 +380,7 @@ async def test_list_documents_hides_proposal_derived_documents_by_default(client
     )
 
     default = await client.get("/document/list", headers=auth_headers(member))
-    included = await client.get(
-        "/document/list?include_generated=true", headers=auth_headers(member)
-    )
+    included = await client.get("/document/list?include_generated=true", headers=auth_headers(member))
 
     assert [row["document_name"] for row in default.json()["data"]] == ["Manual"]
     assert {row["document_name"] for row in included.json()["data"]} == {"Manual", "From Proposal"}
@@ -414,9 +403,7 @@ async def test_list_documents_combines_filters(client, member, factory):
     await factory.knowledge_document(user=member, category=wanted, title="Security Report")
     await factory.knowledge_document(user=member, category=other, title="Cloud Notes")
 
-    response = await client.get(
-        f"/document/list?category_id={wanted.id}&search=cloud", headers=auth_headers(member)
-    )
+    response = await client.get(f"/document/list?category_id={wanted.id}&search=cloud", headers=auth_headers(member))
 
     assert [row["document_name"] for row in response.json()["data"]] == ["Cloud Report"]
 
@@ -434,6 +421,7 @@ async def test_list_documents_requires_a_token(client):
 # ------------------------------------------------------------------
 # GET /document/{id}
 # ------------------------------------------------------------------
+
 
 async def test_get_document(client, member, factory):
     category = await factory.category(name="Refs")
@@ -480,6 +468,7 @@ async def test_get_document_rejects_a_non_integer_id(client, member_headers):
 # DELETE /document/{id}
 # ------------------------------------------------------------------
 
+
 async def test_delete_document_cleans_up_s3_pinecone_and_chunks(
     client, member, factory, db, fake_s3, stub_background_pipelines
 ):
@@ -495,9 +484,7 @@ async def test_delete_document_cleans_up_s3_pinecone_and_chunks(
     assert stub_background_pipelines["delete_document_vectors"] == [document.id]
 
     remaining = await db.scalar(
-        select(func.count())
-        .select_from(KnowledgeChunk)
-        .where(KnowledgeChunk.knowledge_document_id == document.id)
+        select(func.count()).select_from(KnowledgeChunk).where(KnowledgeChunk.knowledge_document_id == document.id)
     )
     assert remaining == 0
     assert await get_knowledge_document_by_id(db, document.id) is None  # soft-deleted

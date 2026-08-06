@@ -40,6 +40,7 @@ def generate_embeddings(chunks: list[Chunk]) -> list[list[float]]:
 # Orchestration
 # ------------------------------------------------------------------
 
+
 async def process_knowledge_document(document_id: int) -> None:
     """
     Runs as a background task (Arq job) after a successful upload.
@@ -58,22 +59,24 @@ async def process_knowledge_document(document_id: int) -> None:
         await update_knowledge_document(db, document, status=IngestionStatus.PROCESSING)
 
         try:
-            temp_path = s3_service.download_to_tempfile(
-                document.file_path, suffix=f".{document.extension}"
-            )
+            temp_path = s3_service.download_to_tempfile(document.file_path, suffix=f".{document.extension}")
             logger.info(
                 "file downloaded from S3 | document_id=%s key=%s",
-                document_id, document.file_path,
+                document_id,
+                document.file_path,
             )
 
             logger.info(
                 "extraction started | document_id=%s extension=%s",
-                document_id, document.extension,
+                document_id,
+                document.extension,
             )
             extracted = extract_document(temp_path, document.file_name, document.extension)
             logger.info(
                 "extraction completed | document_id=%s chars=%s pages=%s",
-                document_id, len(extracted.markdown), len(extracted.pages),
+                document_id,
+                len(extracted.markdown),
+                len(extracted.pages),
             )
             await update_knowledge_document(db, document, extracted_markdown=extracted.markdown)
 

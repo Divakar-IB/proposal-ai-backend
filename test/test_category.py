@@ -6,10 +6,10 @@ from helpers import auth_headers
 
 from database.crud import get_category_by_name_including_deleted
 
-
 # ------------------------------------------------------------------
 # POST /category — create
 # ------------------------------------------------------------------
+
 
 async def test_create_category(client, member_headers, db):
     response = await client.post(
@@ -26,9 +26,7 @@ async def test_create_category(client, member_headers, db):
 async def test_create_category_rejects_a_duplicate_active_name(client, member_headers, factory):
     await factory.category(name="Backend")
 
-    response = await client.post(
-        "/category", headers=member_headers, json={"name": "Backend", "description": "again"}
-    )
+    response = await client.post("/category", headers=member_headers, json={"name": "Backend", "description": "again"})
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Category name already exists"
@@ -40,9 +38,7 @@ async def test_create_category_revives_a_soft_deleted_name(client, member_header
 
     deleted = await factory.category(name="Archived", description="old", is_active=False)
 
-    response = await client.post(
-        "/category", headers=member_headers, json={"name": "Archived", "description": "new"}
-    )
+    response = await client.post("/category", headers=member_headers, json={"name": "Archived", "description": "new"})
 
     assert response.status_code == 200
     assert response.json() == {"message": "Category created successfully"}
@@ -73,6 +69,7 @@ async def test_create_category_requires_a_token(client):
 # POST /category — update (id supplied)
 # ------------------------------------------------------------------
 
+
 async def test_update_category(client, member_headers, factory, db):
     category = await factory.category(name="Old Name", description="old")
 
@@ -98,9 +95,7 @@ async def test_update_category_404s_for_an_unknown_id(client, member_headers):
     assert response.json()["detail"] == "Category not found"
 
 
-async def test_update_category_rejects_a_name_taken_by_another_category(
-    client, member_headers, factory
-):
+async def test_update_category_rejects_a_name_taken_by_another_category(client, member_headers, factory):
     await factory.category(name="Taken")
     category = await factory.category(name="Mine")
 
@@ -162,9 +157,7 @@ async def test_renaming_onto_a_soft_deleted_name_currently_500s(client, member_h
         "with a 4xx (or revive/merge the hidden row, as the create branch does)."
     ),
 )
-async def test_renaming_onto_a_soft_deleted_name_should_be_a_client_error(
-    client, member_headers, factory
-):
+async def test_renaming_onto_a_soft_deleted_name_should_be_a_client_error(client, member_headers, factory):
     await factory.category(name="Retired", is_active=False)
     category = await factory.category(name="Active One")
 
@@ -180,6 +173,7 @@ async def test_renaming_onto_a_soft_deleted_name_should_be_a_client_error(
 # ------------------------------------------------------------------
 # GET /category/list
 # ------------------------------------------------------------------
+
 
 async def test_list_categories_with_document_counts(client, member, factory):
     first = await factory.category(name="With Docs")
@@ -228,6 +222,7 @@ async def test_list_categories_requires_a_token(client):
 # ------------------------------------------------------------------
 # DELETE /category/{id}
 # ------------------------------------------------------------------
+
 
 async def test_delete_category_soft_deletes_it(client, member_headers, factory, db):
     category = await factory.category(name="Doomed")

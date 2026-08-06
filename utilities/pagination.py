@@ -20,8 +20,8 @@ async def paginate(
     data = [serializer(row) for row in rows] if serializer else list(rows)
 
     return {
-        "page": page, 
-        "limit": limit, 
+        "page": page,
+        "limit": limit,
         "total_pages": total_pages,
         "total": total,
         "data": data,

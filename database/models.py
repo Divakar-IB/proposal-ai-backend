@@ -2,27 +2,27 @@ from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
+    Enum as SAEnum,
+)
+from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
     Text,
-    Enum as SAEnum,
     func,
 )
-from sqlalchemy import Enum as SAEnum
-
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database.database import Base
 from database.db_enum import (
-    UserRole,
-    IngestionStatus,
-    DocumentStatus,
     DocumentAvailability,
-    ProposalStatus,
-    ProposalSectionStatus,
+    DocumentStatus,
     GenerationMode,
+    IngestionStatus,
+    ProposalSectionStatus,
+    ProposalStatus,
+    UserRole,
 )
 
 
@@ -40,9 +40,7 @@ class User(BasicModel):
 
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
-    role: Mapped[UserRole] = mapped_column(
-        SAEnum(UserRole, name="userrole"), nullable=False, default=UserRole.USER
-    )
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole, name="userrole"), nullable=False, default=UserRole.USER)
     is_first_login: Mapped[bool] = mapped_column(default=True)
     otp_code: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     otp_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
@@ -87,15 +85,11 @@ class KnowledgeDocument(BasicModel):
     # services.proposal_knowledge_service); NULL means a manual upload. The
     # unique constraint is what keeps one proposal to at most one document,
     # so re-approving re-indexes instead of duplicating.
-    source_proposal_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("proposals.id"), nullable=True, unique=True
-    )
+    source_proposal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("proposals.id"), nullable=True, unique=True)
 
     category: Mapped["Category"] = relationship(back_populates="knowledge_document", lazy="selectin")
     uploader: Mapped["User"] = relationship(back_populates="knowledge_documents")
-    chunks: Mapped[list["KnowledgeChunk"]] = relationship(
-        back_populates="document", cascade="all, delete-orphan"
-    )
+    chunks: Mapped[list["KnowledgeChunk"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
 
 class KnowledgeChunk(BasicModel):
@@ -103,9 +97,7 @@ class KnowledgeChunk(BasicModel):
 
     __tablename__ = "knowledge_chunks"
 
-    knowledge_document_id: Mapped[int] = mapped_column(
-        ForeignKey("knowledge_documents.id"), nullable=False, index=True
-    )
+    knowledge_document_id: Mapped[int] = mapped_column(ForeignKey("knowledge_documents.id"), nullable=False, index=True)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     breadcrumb: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -122,9 +114,7 @@ class RequirementDocument(BasicModel):
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     extension: Mapped[str] = mapped_column(String(20), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    proposal_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("proposals.id"), nullable=True, index=True
-    )
+    proposal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("proposals.id"), nullable=True, index=True)
     status: Mapped[DocumentStatus] = mapped_column(
         SAEnum(DocumentStatus), nullable=False, default=DocumentStatus.UPLOADING
     )
@@ -148,9 +138,7 @@ class Proposal(BasicModel):
     status: Mapped[ProposalStatus] = mapped_column(
         SAEnum(ProposalStatus), nullable=False, default=ProposalStatus.INPROGRESS
     )
-    generation_mode: Mapped[Optional[GenerationMode]] = mapped_column(
-        SAEnum(GenerationMode), nullable=True
-    )
+    generation_mode: Mapped[Optional[GenerationMode]] = mapped_column(SAEnum(GenerationMode), nullable=True)
     page_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     markdown_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

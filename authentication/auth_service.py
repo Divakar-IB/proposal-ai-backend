@@ -20,18 +20,18 @@ from database.crud import (
 )
 from database.models import User
 from schemas.auth import (
-    ForgotPasswordRequest,
-    ForgotPasswordResponse,
-    NewPasswordRequest,
-    NewPasswordResponse,
-    ResetPasswordRequest,
-    ResetPasswordResponse,
     CreateUserRequest,
     CreateUserResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
     LoginRequest,
     LoginResponse,
+    NewPasswordRequest,
+    NewPasswordResponse,
     RegisterRequest,
     RegisterResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     VerifyOtpRequest,
     VerifyOtpResponse,
 )

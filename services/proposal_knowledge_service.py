@@ -94,7 +94,9 @@ async def get_or_create_proposal_knowledge_document(db, proposal: Proposal) -> K
     document = await get_knowledge_document_by_id(db, document_id)
     logger.info(
         "proposal knowledge document upserted | proposal_id=%s document_id=%s version=%s",
-        proposal.id, document.id, document.version,
+        proposal.id,
+        document.id,
+        document.version,
     )
     return document
 

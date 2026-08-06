@@ -21,10 +21,10 @@ from authentication.jwt_handler import (
     verify_password_reset_token,
 )
 
-
 # ------------------------------------------------------------------
 # Hashing
 # ------------------------------------------------------------------
+
 
 def test_hash_password_does_not_store_the_plaintext():
     hashed = hash_password("Admin@123")
@@ -80,6 +80,7 @@ def test_verify_password_is_case_sensitive():
 # ------------------------------------------------------------------
 # JWT
 # ------------------------------------------------------------------
+
 
 def test_access_token_round_trips():
     token = create_access_token(user_id=7, email="a@example.com", role="org_admin")

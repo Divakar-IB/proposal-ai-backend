@@ -9,8 +9,9 @@ DEFAULT_CHUNK_SIZE_TOKENS = 500
 DEFAULT_CHUNK_OVERLAP_TOKENS = 50
 
 
-def split_oversized_section(text: str, chunk_size: int = DEFAULT_CHUNK_SIZE_TOKENS,
-                             chunk_overlap: int = DEFAULT_CHUNK_OVERLAP_TOKENS) -> list[str]:
+def split_oversized_section(
+    text: str, chunk_size: int = DEFAULT_CHUNK_SIZE_TOKENS, chunk_overlap: int = DEFAULT_CHUNK_OVERLAP_TOKENS
+) -> list[str]:
     """Sub-splits a single heading-hierarchy section that exceeds chunk_size tokens.
     Returns [text] unchanged if it already fits.
 

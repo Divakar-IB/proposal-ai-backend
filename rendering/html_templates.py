@@ -15,10 +15,10 @@ _HTML_DIR = Path(__file__).resolve().parent.parent / "html"
 DEFAULT_TEMPLATE_ID = 1
 
 HTML_TEMPLATES: dict[int, str] = {
-    1: "template_1.html",          # Professional (default)
-    2: "minimal.html",             # Minimal
-    3: "corporate_preview.html",   # Corporate
-    4: "executive_preview.html",   # Executive
+    1: "template_1.html",  # Professional (default)
+    2: "minimal.html",  # Minimal
+    3: "corporate_preview.html",  # Corporate
+    4: "executive_preview.html",  # Executive
     # 5: "modern_preview.html",    # Modern — disabled alongside its entry in
     #                                constants.EXPORT_TEMPLATES. Re-enable both
     #                                together, or /proposal/templates and the
