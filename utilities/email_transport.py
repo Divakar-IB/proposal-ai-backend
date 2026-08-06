@@ -12,6 +12,12 @@ Two families of transport:
 Pick one with ``smtp.provider`` in CONFIG. Every transport takes the same
 arguments and returns nothing, so utilities/email_service.py does not care
 which is in use.
+
+``body`` is always the plain-text part. Passing ``html_body`` as well sends a
+multipart mail carrying both, which is what clients want: the HTML is shown
+where it can be, and the text part still covers plain-text readers and keeps
+spam filters happy. Every transport spells that pairing differently, which is
+the only reason they diverge below.
 """
 
 import base64
@@ -60,13 +66,22 @@ def _raise_for_status(response: httpx.Response, provider: str) -> None:
 # ----------------------------------------------------------------------
 
 def send_via_smtp(
-    to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: Optional[list[EmailAttachment]] = None,
+    html_body: Optional[str] = None,
 ) -> None:
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = _sender()
     message["To"] = to_email
     message.set_content(body)
+    if html_body:
+        # set_content + add_alternative produces multipart/alternative with the
+        # plain text first, which is the order clients expect: an HTML-capable
+        # one shows the last part, a text-only one falls back to the first.
+        message.add_alternative(html_body, subtype="html")
 
     for attachment in attachments or []:
         maintype, _, subtype = attachment.content_type.partition("/")
@@ -92,7 +107,11 @@ def send_via_smtp(
 # ----------------------------------------------------------------------
 
 def send_via_resend(
-    to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: Optional[list[EmailAttachment]] = None,
+    html_body: Optional[str] = None,
 ) -> None:
     payload: dict = {
         "from": _sender(),
@@ -100,6 +119,8 @@ def send_via_resend(
         "subject": subject,
         "text": body,
     }
+    if html_body:
+        payload["html"] = html_body
     if attachments:
         payload["attachments"] = [
             {
@@ -119,7 +140,11 @@ def send_via_resend(
 
 
 def send_via_brevo(
-    to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: Optional[list[EmailAttachment]] = None,
+    html_body: Optional[str] = None,
 ) -> None:
     sender: dict = {"email": config.smtp.from_email}
     if config.smtp.from_name:
@@ -131,6 +156,8 @@ def send_via_brevo(
         "subject": subject,
         "textContent": body,
     }
+    if html_body:
+        payload["htmlContent"] = html_body
     if attachments:
         payload["attachment"] = [
             {
@@ -150,17 +177,27 @@ def send_via_brevo(
 
 
 def send_via_sendgrid(
-    to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: Optional[list[EmailAttachment]] = None,
+    html_body: Optional[str] = None,
 ) -> None:
     sender: dict = {"email": config.smtp.from_email}
     if config.smtp.from_name:
         sender["name"] = config.smtp.from_name
 
+    # SendGrid requires the content parts in increasing order of preference,
+    # so text/plain must come before text/html — reversing them is a 400.
+    content: list[dict] = [{"type": "text/plain", "value": body}]
+    if html_body:
+        content.append({"type": "text/html", "value": html_body})
+
     payload: dict = {
         "personalizations": [{"to": [{"email": to_email}]}],
         "from": sender,
         "subject": subject,
-        "content": [{"type": "text/plain", "value": body}],
+        "content": content,
     }
     if attachments:
         payload["attachments"] = [

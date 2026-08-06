@@ -25,6 +25,7 @@ Tech stack
 - Reuse the shared heading detector (`extraction/heading_detector.py::classify_heading`) for any new text-based extractor rather than inventing a new heading-scoring heuristic — it already balances numbering patterns, font-size delta, bold/underline ratio, and word count.
 - Never leave debug output (`print(...)`) in an extractor on the live path — it runs on every document of that type.
 - Don't add a standalone dev/test script that imports production extraction internals unless it's clearly out-of-band (existing precedent: `extraction/ocr_extractor.py` is intentionally a scratch script, not wired into `factory.py`).
+- **`from paddleocr import PPStructureV3` lives inside `StructuredOCREngine.get_engine()`, not at module scope — leave it there.** It is not an oversight and it is not a circular-import workaround. `paddleocr` drags in paddlex, paddlepaddle, pandas and OpenBLAS for ~900MB of commit, and `extraction/factory.py` makes this module reachable from the API server, the test suite and Alembic — all of which would pay that cost at import for a dependency only a scanned PDF page or an uploaded image ever needs. Hoisting it back to the top takes `import main` from ~208MB to ~1091MB and, on a machine near its Windows commit limit, turns startup into an opaque `ImportError: DLL load failed ... The paging file is too small` from deep inside pandas. Same rule for any other heavy native dependency added to an extractor: import it in the function that uses it.
 
 ---
 

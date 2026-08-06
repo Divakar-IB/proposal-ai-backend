@@ -3,6 +3,7 @@ import time
 from typing import Optional
 
 from config import config
+from utilities.email_templates import resolve_login_url, team_invite_email
 from utilities.email_transport import EmailAttachment, get_transport
 from utilities.logger import get_logger
 
@@ -19,10 +20,18 @@ __all__ = [
 
 
 async def send_email(
-    to_email: str, subject: str, body: str, attachments: Optional[list[EmailAttachment]] = None
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: Optional[list[EmailAttachment]] = None,
+    html_body: Optional[str] = None,
 ) -> None:
     """Sends one email via whichever transport `smtp.provider` selects (see
     utilities/email_transport.py).
+
+    `body` is the plain-text part; pass `html_body` too and the mail carries
+    both, so clients that render HTML get the styled version while plain-text
+    readers still get something legible.
 
     Both transports are blocking network I/O, so they run in a worker thread
     to keep the event loop free.
@@ -30,7 +39,7 @@ async def send_email(
 
     transport = get_transport()
     started = time.perf_counter()
-    await asyncio.to_thread(transport, to_email, subject, body, attachments)
+    await asyncio.to_thread(transport, to_email, subject, body, attachments, html_body)
     logger.info(
         "email sent | provider=%s to=%s subject=%r %.2fs",
         config.smtp.provider, to_email, subject, time.perf_counter() - started,
@@ -70,22 +79,20 @@ async def send_proposal_export_email(
         raise
 
 
-async def send_team_invite_email(to_email: str, temporary_password: str) -> None:
+async def send_team_invite_email(
+    to_email: str, temporary_password: str, login_url: Optional[str] = None
+) -> None:
+    """`login_url` defaults to `app_url` + `login_path` from CONFIG. Pass it
+    explicitly only to override where this particular invite should land."""
+
     subject = "You're invited to Proposal AI"
-    body = (
-        "Hello,\n\n"
-        "You have been invited to join Proposal AI.\n\n"
-        "Your login credentials are:\n\n"
-        "Email:\n"
-        f"{to_email}\n\n"
-        "Temporary Password:\n"
-        f"{temporary_password}\n\n"
-        "Please log in using these credentials and change your password immediately.\n\n"
-        "Regards,\n"
-        "Proposal AI Team"
+    body, html_body = team_invite_email(
+        to_email=to_email,
+        temporary_password=temporary_password,
+        login_url=login_url or resolve_login_url(),
     )
     try:
-        await send_email(to_email, subject, body)
+        await send_email(to_email, subject, body, html_body=html_body)
     except Exception:
         logger.exception("Failed to send team invite email to %s", to_email)
         raise

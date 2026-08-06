@@ -243,11 +243,14 @@ CONFIG='{
   "hf_inference": {"api_token": "...", "embedding_model": "...", "hf_base_api_url": "..."},
   "smtp": {"host": "smtp.gmail.com", "port": 587, "username": "...", "password": "...", "from_email": "...", "use_tls": true},
   "redis": {"host": "localhost", "port": 6379, "db": 0},
-  "allowed_origins": ["http://localhost:3000"]
+  "allowed_origins": ["http://localhost:3000"],
+  "base_url": "https://your-frontend.example.com/auth/login"
 }'
 ```
 
-`redis` is optional and defaults as shown above; every other top-level key is required at startup. Never commit real credentials — keep `.env` out of version control.
+`redis` and `base_url` are optional and default as shown above; every other top-level key is required at startup. Never commit real credentials — keep `.env` out of version control.
+
+**`base_url`** is the link outbound email points at — today, the "Log in to Proposal AI" button in the team-invite mail. It's used verbatim rather than joined with a path, so set it to the frontend's actual sign-in page. It defaults to `http://localhost:3000/auth/login`, which is only right for local dev: leave it unset in a deployed environment and invitees receive a link pointing at their own machine.
 
 ## Configuration
 

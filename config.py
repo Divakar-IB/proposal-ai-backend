@@ -117,6 +117,17 @@ class AppConfig(BaseSettings):
     debug: bool = False
     allowed_origins: List[str] = Field(default_factory=list)
 
+    # Public URL of the web app that outbound email links to — the target of
+    # the team-invite "Log in" button. Point it straight at the frontend's
+    # sign-in page (e.g. "https://<app>/auth/login"); it is used verbatim, not
+    # joined with a path, so a frontend that moves its login route only needs
+    # this value changed.
+    #
+    # Optional so a CONFIG without it still validates, but the default is only
+    # right for local dev: leave it unset in a deployed environment and
+    # invitees get a link pointing at their own machine.
+    base_url: str = "http://localhost:3000/auth/login"
+
     @model_validator(mode="before")
     @classmethod
     def load_from_config_env(cls, data: Any) -> Any:
