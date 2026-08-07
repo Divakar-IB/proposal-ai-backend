@@ -275,6 +275,21 @@ async def get_document(
     return _to_response(document)
 
 
+@router.get("/{document_id}/download")
+async def download_document(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Returns a presigned URL for downloading/viewing the knowledge document."""
+    document = await get_knowledge_document_by_id(db, document_id)
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    presigned_url = s3_service.generate_presigned_url(document.file_path)
+    return {"document_id": document_id, "download_url": presigned_url, "file_name": document.file_name}
+
+
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: int,

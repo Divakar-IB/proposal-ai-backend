@@ -19,28 +19,32 @@ async def generate_proposal_stream(
     page_count: int,
     generation_mode: GenerationMode,
 ) -> AsyncIterator[str]:
-    """Drafts the proposal one section at a time and streams each section's
-    lifecycle as Server-Sent Events:
+    """Drafts the proposal and streams each section's lifecycle as
+    Server-Sent Events:
 
         event: section_start  data: {"name": "..."}
-        event: section_chunk  data: {"content": "..."}   (repeated)
+        event: section_chunk  data: {"content": "...", "name": "..."}  (repeated)
         event: section_done   data: {"name": "..."}
         ... (repeated per section) ...
         event: done            data: {}
+
+    `section_chunk` carries the section `name` alongside the text because
+    sections can be drafted concurrently (config.generation.concurrency), and
+    interleaved chunks would otherwise be unattributable. At the default
+    concurrency of 1 the event order is identical to the strictly sequential
+    behaviour this had before.
 
     Each section is persisted to the ProposalSection table as soon as its
     draft completes, so a client disconnecting mid-stream still leaves
     earlier sections saved. On failure, an "error" event is emitted and the
     proposal is marked FAILED instead of raising into a stream that already
-    sent a 200 response.
+    sent a 200 response — sections that had already completed stay persisted.
 
     Orchestrated by the LangGraph state machine in generation/graph.py
-    (load_context -> start_section -> retrieve -> draft -> persist_section,
-    looping per section, then compile_proposal). This function only drives
-    the graph and translates its custom stream events into SSE lines — the
-    graph's `draft` node pushes `section_chunk` events via
-    langgraph.config.get_stream_writer() as the LLM streams text, which is
-    why stream_mode="custom" surfaces them here in real time."""
+    (load_context -> draft_sections -> compile_proposal). `draft_sections`
+    fans out per section under an asyncio.Semaphore; each section pushes its
+    events via langgraph.config.get_stream_writer() as the LLM streams text,
+    which is why stream_mode="custom" surfaces them here in real time."""
 
     initial_state = {
         "proposal_id": proposal_id,

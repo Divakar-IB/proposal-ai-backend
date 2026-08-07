@@ -239,18 +239,33 @@ CONFIG='{
   "jwt": {"secret_key": "...", "algorithm": "HS256", "access_token_expire_minutes": 60, "refresh_token_expire_days": 7, "issuer": "proposal-ai"},
   "aws": {"access_key_id": "...", "secret_access_key": "...", "region": "...", "bucket_name": "..."},
   "pinecone": {"api_key": "...", "index_name": "...", "dimension": 1024, "metric": "cosine", "cloud": "aws", "region": "us-east-1"},
-  "groq": {"api_key": "...", "base_url": "https://api.groq.com/openai/v1", "llm_model": "openai/gpt-oss-120b"},
+  "groq": {"api_key": "...", "base_url": "https://api.groq.com/openai/v1", "llm_model": "openai/gpt-oss-120b", "tokens_per_minute": 8000, "request_budget_ratio": 0.85},
   "hf_inference": {"api_token": "...", "embedding_model": "...", "hf_base_api_url": "..."},
   "smtp": {"host": "smtp.gmail.com", "port": 587, "username": "...", "password": "...", "from_email": "...", "use_tls": true},
   "redis": {"host": "localhost", "port": 6379, "db": 0},
+  "generation": {"concurrency": 1, "reasoning_effort": "low", "max_rate_limit_retries": 4},
   "allowed_origins": ["http://localhost:3000"],
   "base_url": "https://your-frontend.example.com/auth/login"
 }'
 ```
 
-`redis` and `base_url` are optional and default as shown above; every other top-level key is required at startup. Never commit real credentials — keep `.env` out of version control.
+`redis`, `generation` and `base_url` are optional and default as shown above; every other top-level key is required at startup. Never commit real credentials — keep `.env` out of version control.
 
 **`base_url`** is the link outbound email points at — today, the "Log in to Proposal AI" button in the team-invite mail. It's used verbatim rather than joined with a path, so set it to the frontend's actual sign-in page. It defaults to `http://localhost:3000/auth/login`, which is only right for local dev: leave it unset in a deployed environment and invitees receive a link pointing at their own machine.
+
+### Generation tuning
+
+**`groq.tokens_per_minute`** is the account's TPM allowance, and it is not only a rate limit: Groq rejects any *single* request whose prompt plus reserved completion exceeds it, with `413 Request too large`. So it also acts as a hard per-request ceiling, and unlike a `429` no amount of waiting fixes it. `8000` is the on-demand/free tier. The real value is read from the `x-ratelimit-limit-tokens` response header at runtime and overrides this, so this only has to be right for the very first request of a process. `request_budget_ratio` (0.85) is the fraction of it one request may plan to occupy — the gap absorbs the difference between the local tiktoken estimate and Groq's own tokenizer.
+
+**`generation.reasoning_effort`** defaults to `"low"` and is a **correctness** setting, not a tuning knob. `gpt-oss` is a reasoning model: it emits reasoning on a separate delta field that is never streamed to the client, but those tokens are billed against the same completion allowance as the visible draft. At the model default, a section can spend its entire allowance reasoning and return **completely empty** — measured at a 300-token cap: 301 reasoning tokens, 0 content tokens. At `"low"` the same call spent 25 on reasoning and wrote 204 words. Do not raise this without also raising the per-section token cap.
+
+**`generation.concurrency`** (default `1`) caps how many sections draft at once, and is overridable per-process with the **`GENERATION_CONCURRENCY`** env var so it can be changed without touching `CONFIG`:
+
+```bash
+GENERATION_CONCURRENCY=3 uvicorn main:app
+```
+
+Raising it does **not** make free-tier generation faster. 8000 TPM is a token *rate* cap, so a ~72k-token 10-page run takes ~9 minutes at any concurrency — the setting only decides whether the limit is hit in bursts. It is also unsafe above 1 there: a single large section can request ~8000 tokens on its own, so two at once earns a `413` rather than a retryable `429`. Raise it on a tier whose TPM can absorb the parallelism. Note that above 1, sections stream **interleaved**, so a client must attribute `section_chunk` events using the `name` field they carry.
 
 ## Configuration
 

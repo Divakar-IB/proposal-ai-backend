@@ -25,11 +25,23 @@ No field for selecting specific requirement documents or section titles — the 
 
 The endpoint itself just 404s if the proposal doesn't exist, then returns a `StreamingResponse` wrapping `generate_proposal_stream(proposal_id, page_count, generation_mode)`, `media_type="text/event-stream"`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`.
 
-## 2. Control flow — `generate_proposal_stream` (`generation/proposal_generator.py:56-171`)
+## 2. Control flow — `generate_proposal_stream` (`generation/proposal_generator.py`)
 
-Sequential, not a graph — one `for` loop over a static section list: retrieve → draft(stream) → persist, per section.
+A LangGraph state machine (`generation/graph.py`), **not** a `for` loop:
 
-1. **Load state** (`:76-99`, inside `db_session()`):
+```
+START → load_context → draft_sections → compile_proposal → END
+```
+
+`generate_proposal_stream` only drives the graph via `astream(..., stream_mode="custom")` and translates writer events into SSE lines.
+
+`draft_sections` owns the per-section fan-out **internally**: it resolves `get_stream_writer()` once, creates one asyncio task per section, and gathers them under an `asyncio.Semaphore(config.generation.resolved_concurrency)`. Each task runs `generation/section_runner.py::run_section` — one section's whole retrieve → draft → persist chain, so a section is still persisted the moment it individually finishes.
+
+**Why not LangGraph's `Send` fan-out:** it has no native concurrency cap, so bounding it means fanning out in fixed batches with a superstep barrier between them — reintroducing the barrier wait concurrency is meant to remove — plus state reducers to accumulate `persisted_sections` and graph-level retry policy for per-section 429 backoff. A single node holding a semaphore expresses the same thing directly. This replaced a `start_section → retrieve → draft → persist_section` **cycle** that could only ever run one section at a time.
+
+Concurrency defaults to **1**, which reproduces the original strictly-sequential behaviour exactly. Above 1 sections complete out of order; `assemble_markdown` sorts by `order_index`, so document order is unaffected.
+
+1. **Load state** (`load_context`, inside `db_session()`):
    - Fetch `Proposal` (404-equivalent `ValueError` if missing).
    - Fetch all `RequirementDocument`s for this proposal.
    - `build_combined_requirements_json(...)` (see requirement-document-flow.md §5).
@@ -40,15 +52,29 @@ Sequential, not a graph — one `for` loop over a static section list: retrieve 
 
 2. **Per-section word target** (`:101`): `word_target = max((page_count * 500) // len(SECTION_DEFINITIONS), 100)`. `SECTION_DEFINITIONS` has 12 entries, so a 10-page proposal → ~416 words/section.
 
-3. **Per-section loop** (`:105-148`), fixed order:
-   a. Yield SSE `section_start`.
-   b. Build `section_state`: `key`, `title`, `query_fields`, `drafting_note` (word target + outline instruction), `retrieved_chunks: []`.
-   c. **Retrieval**: `retrieve_chunks_for_section(...)` (§3).
-   d. **Draft (streamed)**: `draft_one_section_stream(...)` — iterates `GroqChatClient.stream_complete(...)`, each delta re-emitted as SSE `section_chunk`.
-   e. `citations = section_citations(section_state)` — just `{breadcrumb, source_filename}` per retrieved chunk, not derived from LLM output.
-   f. **Persist immediately** (own `db_session()` block): insert `ProposalSection(section_key, title, order_index, content, citations, status=APPROVED)` — **every section is force-approved, no quality gate, in this path.**
-   g. Yield SSE `section_done`.
-   - On any exception: **status → FAILED** with `error_message`, yield SSE `error`, stream ends (no `done` event).
+3. **Per section** — `section_runner.py::run_section`, under the semaphore:
+   a. Emit SSE `section_start`.
+   b. `section_state` built by `graph.py::_build_section_state`: `key`, `title`, `query_fields`, `drafting_note` (word target + outline instruction), `retrieved_chunks: []`.
+   c. **Retrieval**: `retrieve_chunks_for_section(...)` (§3), own `db_session()`. Logs the chunk count; 0 chunks is not an error — `build_context_block` emits an explicit `(no relevant context retrieved)` placeholder and `DRAFT_SYSTEM_PROMPT` has a branch for writing from general practice.
+   d. **Token sizing** (`generation/token_budget.py`) — done after retrieval, since the retrieved context is the largest and most variable part of the prompt. `completion_tokens_for(word_target)` then `clamp_completion_tokens(...)` to keep prompt + completion under `groq.tokens_per_minute × request_budget_ratio`. A clamp logs a warning (the section will run short); a prompt that alone exceeds the ceiling logs an error naming `TOP_K_SECTION_CHUNKS`.
+   e. **TPM pre-flight**: `rate_limit.governor.acquire(...)` waits if the last response's `x-ratelimit-remaining-tokens` is too thin for a request this size.
+   f. **Draft (streamed)**: `draft_one_section_stream(...)` under `run_with_rate_limit_retry` — each delta re-emitted as SSE `section_chunk` **with the section `name`** so concurrent chunks are attributable. A 429 waits exactly `Retry-After` and retries only this section; a 413 raises `RequestTooLargeError` immediately (waiting cannot fix a too-large request).
+   g. **Validation** — `validate_section_outcome(...)` **before** persisting: empty content → `EmptySectionError`, `finish_reason != "stop"` → `TruncatedSectionError`. See §2a.
+   h. `citations = section_citations(section_state)` — just `{breadcrumb, source_filename}` per retrieved chunk, not derived from LLM output.
+   i. **Persist immediately** (own `db_session()` block): insert `ProposalSection(section_key, title, order_index, content, citations, status=APPROVED)` — **every section is force-approved, no quality gate, in this path.**
+   j. Emit SSE `section_done`.
+   - On any exception: `draft_sections` gathers with `return_exceptions=True` so no task is orphaned mid-flight, then raises. **status → FAILED** with `error_message` naming the section, yield SSE `error`, stream ends (no `done` event). **Sections that already persisted stay persisted.**
+
+### 2a. The reasoning-token trap — read before touching the drafting call
+
+`openai/gpt-oss-120b` is a reasoning model. It emits reasoning on a **separate `delta.reasoning` field** (`ChoiceDelta.model_config["extra"] == "allow"`) that is billed against the same `max_completion_tokens` allowance as the visible draft but is never streamed to the client.
+
+`stream_complete` reads only `delta.content`, so before this was fixed a response that reasoned until it ran out of room yielded an empty string and was **persisted as a finished-but-empty section** — no error, no log. Measured on one section at a 300-token cap: model default → **301 reasoning tokens, 0 content tokens, empty section**; `reasoning_effort="low"` → 25 reasoning tokens, 204 words written, same billed cost.
+
+Three consequences:
+- `config.generation.reasoning_effort` defaults to `"low"` and is a **correctness** setting. Raising it without raising the per-section cap re-creates empty sections.
+- **Never set `max_completion_tokens` without it** — a tighter cap makes the failure more likely, not less.
+- `StreamOutcome` (`llm/chat_client.py`) exists so the caller can tell a finished section from a truncated or empty one; the yielded text alone cannot. Anything that persists a streamed section must check it.
 
 4. **After all sections succeed** (`:159-170`):
    - `assemble_markdown(proposal_title, persisted_sections)` (`generation/markdown_sections.py`) → `# {title}\n\n` + `## {section title}\n\n{content}` per section.

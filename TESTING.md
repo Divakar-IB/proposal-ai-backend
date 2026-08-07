@@ -8,7 +8,7 @@ SQLite database standing in for Postgres.
 No Postgres, no Docker, no Redis, no network access, no credentials required.
 
 ```
-346 tests   →   343 passed, 3 xfailed, 0 failed      (~15 seconds)
+395 tests   →   392 passed, 3 xfailed, 0 failed      (~16 seconds)
 ```
 
 The 3 `xfailed` are **not breakage**. They are deliberate markers pinning three
@@ -106,8 +106,16 @@ test/
 ├── test_organization_settings.py 35  /organization-settings
 ├── test_proposals.py          92     /proposal
 ├── test_proposal_wizard.py    23     /proposal/{id}/state, /proposal/{id}/sections
+├── test_generation_pipeline.py 49    the generation pipeline itself (not a router)
 └── test_middleware.py         13     error handler, CORS, routing, OpenAPI
 ```
+
+`test_generation_pipeline.py` is the one module that drives the real generation
+pipeline rather than an endpoint. `test_proposals.py` stubs
+`generate_proposal_stream` wholesale to test the endpoint's SSE plumbing, so
+without this nothing exercises `generation/graph.py`, `section_runner.py`,
+`token_budget.py` or `rate_limit.py` — the layers where a section can come back
+empty. See [Generation pipeline](#generation-pipeline--test_generation_pipelinepy-49).
 
 ---
 
@@ -700,6 +708,65 @@ Sections: ordered retrieval; empty for an ungenerated proposal; reorder;
 everything; a section from another proposal → 400; unknown id → 400; **a
 partially-valid payload leaves `order_index` untouched** (the ownership check runs
 over the whole payload before any delete); 404 and 422 shapes.
+
+### Generation pipeline — `test_generation_pipeline.py` (49)
+
+The only place the real drafting pipeline runs. Everything is real except
+`GroqChatClient.stream_complete`, which is replaced by a fake that answers any
+section — the LangGraph run, the SSE framing, the token budgeting and the DB
+writes are all live, which is what makes "twelve rows persisted" and "never more
+than three in flight" mean anything.
+
+These exist because of a bug that shipped silently. `gpt-oss` streams reasoning
+tokens on a separate delta field, billed against the same allowance as the visible
+draft; `stream_complete` read only `delta.content` and never checked
+`finish_reason`, so a response that reasoned until it ran out of room persisted as
+a **finished-but-empty section**. The fake therefore populates `StreamOutcome`
+exactly as the real client does — a fake that left `finish_reason` unset would
+fail every section as truncated.
+
+*Token budgeting:* caps scale with the word target and never fall below the floor;
+the clamp keeps the whole request under the per-request ceiling **whenever the
+prompt leaves room**, and `prompt_exceeds_ceiling` flags the case where no cap can
+help (that one is sent anyway — Groq's tokenizer is the authority and the local
+estimate can be pessimistic).
+
+*Rate limiting:* Groq's duration formats (`952ms`, `1.492s`, `1m26.4s`) parse; the
+governor **learns the real limit from `x-ratelimit-limit-tokens`** and overrides
+config; it debits locally so concurrent sections see a reservation before the
+header arrives; it lets the very first request of a process through rather than
+stalling on a guess; a 429 **waits exactly the `Retry-After` value** rather than a
+backoff curve of our own; a **413 is not retried at all** and its message names
+`page_count` and `tokens_per_minute`.
+
+*The previously-silent failures:* empty content raises and **the error names
+`reasoning_effort`** (nothing in an empty stream hints at the cause); whitespace-only
+counts as empty; truncation raises **even though text arrived**; an absent
+`finish_reason` is treated as a dropped tail, not a clean finish; Groq's usage-only
+trailer (`choices: []`) is skipped rather than raising `IndexError`.
+
+*Contract preservation:* every non-generation caller still sends a byte-identical
+request (`max_completion_tokens` and `reasoning_effort` omitted when unset,
+`temperature=0.4`, no tool calling); one `stream_complete` per section with no
+batching; SSE event names and `section_start`/`section_done` payloads unchanged;
+`section_chunk` carries `content` **plus** the added `name`; streamed chunks
+reassemble to the stored content; proposal ends `REVIEW` with markdown uploaded.
+
+*Concurrency:* the default of 1 reproduces strictly sequential drafting;
+`GENERATION_CONCURRENCY` overrides config and ignores garbage and `0`; the
+semaphore is never exceeded and genuinely overlaps above 1; out-of-order
+completion still persists the correct `order_index`; a failing section marks the
+proposal `FAILED` and emits `error` with **no `done`**, while sections that already
+completed stay persisted.
+
+One fixture is worth knowing about: `serialized_db_sessions`. conftest pins every
+session to a single SQLite `:memory:` connection via `StaticPool`, and two
+concurrent transactions on one connection fail with *"cannot commit transaction -
+SQL statements in progress"*. Production is Postgres with a 10+20 pool, so each
+concurrent section gets its own connection and `proposal_sections` has no unique
+constraint to contend over. The fixture serializes only the DB blocks, so drafting
+still overlaps and the concurrency assertions stay meaningful — **it is the
+fixture's constraint, not the pipeline's**.
 
 ### Cross-cutting — `test_middleware.py` (13)
 

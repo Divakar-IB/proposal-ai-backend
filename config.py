@@ -50,6 +50,87 @@ class GroqConfig(BaseModel):
     base_url: str = "https://api.groq.com/openai/v1"
     llm_model: str = "openai/gpt-oss-120b"
 
+    # The account's tokens-per-minute allowance, and the reason generation has
+    # to think about tokens at all. It is NOT only a rate: Groq rejects any
+    # *single* request whose prompt plus reserved completion exceeds it,
+    # outright, with 413 "Request too large ... on tokens per minute (TPM)".
+    # So it doubles as a hard per-request ceiling, and waiting does not fix a
+    # 413 the way it fixes a 429 — the request itself has to be smaller.
+    #
+    # 8000 is the on-demand/free tier, confirmed at runtime from the
+    # x-ratelimit-limit-tokens response header. The header is authoritative and
+    # overwrites this at runtime (see generation/rate_limit.py); this value only
+    # has to be right for the very first request of the process, before any
+    # header has been seen.
+    tokens_per_minute: int = 8000
+
+    # Fraction of `tokens_per_minute` a single request may plan to occupy. The
+    # gap absorbs the difference between our local tiktoken estimate and Groq's
+    # own tokenizer — a request estimated at exactly the limit lands on the
+    # wrong side of it and 413s.
+    request_budget_ratio: float = 0.85
+
+
+class GenerationConfig(BaseModel):
+    """Knobs for the proposal-generation pipeline (generation/graph.py)."""
+
+    # Maximum section drafts in flight at once. Defaults to 1, which reproduces
+    # the original strictly-sequential behaviour.
+    #
+    # Raising this does not make free-tier generation faster: an 8000 TPM cap
+    # is a token *rate* limit, so a ~72k-token 10-page run takes ~9 minutes
+    # whatever the concurrency — the cap only decides whether you hit the limit
+    # in bursts. It is also unsafe above 1 there: a single large section can
+    # request ~8000 tokens on its own, so two at once earns a 413 rather than a
+    # retryable 429. Raise it on a tier whose TPM can actually absorb the
+    # parallelism.
+    #
+    # Overridable per-process with the GENERATION_CONCURRENCY env var so the
+    # value can be changed without editing the CONFIG blob.
+    concurrency: int = 1
+
+    # Reasoning effort for drafting calls. `gpt-oss` is a reasoning model: it
+    # emits reasoning on a separate `reasoning` delta that nothing streams to
+    # the client, while those tokens are still billed against the same
+    # max_completion_tokens allowance as the visible draft.
+    #
+    # This is a correctness setting, not a quality/latency trade-off. Measured
+    # on one section at a 300-token cap: at the model default, reasoning
+    # consumed all 300 tokens and the section came back COMPLETELY EMPTY; at
+    # "low" it spent 25 on reasoning and wrote 204 words for the same billed
+    # cost. Drafting is a well-specified writing task — the outline, word
+    # budget and context are all supplied — so there is little for deeper
+    # reasoning to contribute. Do not raise this without also raising the
+    # per-section token cap.
+    reasoning_effort: Optional[Literal["low", "medium", "high"]] = "low"
+
+    # Attempts per section when Groq returns 429. Retries wait exactly as long
+    # as the Retry-After header asks, so this is an attempt count, not a
+    # backoff schedule.
+    max_rate_limit_retries: int = 4
+
+    # Throttle a section before it starts if the remaining-token headroom
+    # reported by the last response is below this fraction of what the section
+    # is estimated to need. Below it, the runner waits for the bucket to refill
+    # instead of firing a request that would 429.
+    tpm_headroom_ratio: float = 1.0
+
+    @property
+    def resolved_concurrency(self) -> int:
+        """`concurrency`, with the GENERATION_CONCURRENCY env var taking
+        precedence. Invalid or non-positive values fall back to the config
+        value rather than failing generation at request time."""
+
+        raw = os.environ.get("GENERATION_CONCURRENCY")
+        if raw:
+            try:
+                override = int(raw)
+            except ValueError:
+                return max(self.concurrency, 1)
+            if override > 0:
+                return override
+        return max(self.concurrency, 1)
+
 
 class HFInferenceConfig(BaseModel):
     api_token: str
@@ -116,6 +197,7 @@ class AppConfig(BaseSettings):
     groq: GroqConfig
     hf_inference: HFInferenceConfig
     redis: RedisConfig = RedisConfig()
+    generation: GenerationConfig = GenerationConfig()
     smtp: SMTPConfig
     debug: bool = False
     allowed_origins: List[str] = Field(default_factory=list)

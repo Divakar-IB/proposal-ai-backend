@@ -46,6 +46,29 @@ Tech stack
 
 - Keep `draft_one_section_stream` compatible with the SSE contract in `generate_proposal_stream` — each yielded delta must be plain text appended to the running section content, re-emitted as a `section_chunk` event. Don't switch to a tool-calling/structured-output completion for the drafting call — `GroqChatClient.stream_complete` explicitly doesn't support forced tool calls alongside streaming ("streaming + forced tool calls don't mix cleanly").
 - On any exception mid-generation, the pipeline must both persist a terminal `FAILED` status (with `error_message`) **and** yield an `error` SSE event — don't let one happen without the other, or the client and the DB state will disagree about what happened.
+- **`section_chunk` carries `{"content", "name"}`.** The `name` is load-bearing, not decorative: above `generation.concurrency = 1` chunks from different sections interleave and are otherwise unattributable. Never drop it, and never let a new event kind carry section text without a section identifier.
+- A sync generator that blocks on the LLM socket must go through `section_runner.py::_aiter_blocking`. Iterating it directly inside an async node never yields to the event loop, so LangGraph can't drain its writer queue — every token of a section arrives in one burst when the node returns, and every other request in the process stalls meanwhile.
+
+---
+
+# Reasoning tokens, token caps and empty sections
+
+**Read this before changing anything about the drafting call.** It is the one trap here that fails silently.
+
+- `gpt-oss` emits reasoning on a **separate `delta.reasoning` field** that is billed against the same `max_completion_tokens` allowance as the draft but never streamed. Measured at a 300-token cap: model default → 301 reasoning tokens, **0 content tokens, empty section**; `reasoning_effort="low"` → 25 reasoning tokens, 204 words, same billed cost.
+- **Never set `max_completion_tokens` without `config.generation.reasoning_effort`.** A tighter cap makes empty sections *more* likely, not less. Raising the effort without raising the cap re-creates the bug.
+- Anything that persists a streamed section **must** check its `StreamOutcome` (`llm/chat_client.py`) via `validate_section_outcome` — before the write, not after. The yielded text alone cannot distinguish a short section from a truncated or empty one, and that is exactly how empty sections used to reach the table.
+- Size requests with `generation/token_budget.py`, never with a hardcoded cap. `groq.tokens_per_minute` is **also a per-request ceiling** — Groq rejects a single request exceeding it with `413 Request too large`, which waiting does not fix (unlike `429`). `clamp_completion_tokens` is what keeps a large section legal.
+- `TOP_K_SECTION_CHUNKS` is the dominant prompt cost (8 × ~520 tokens ≈ 4160 of a ~5400-token prompt). It is the first lever for both latency and 413s, and the last one to change silently — it trades retrieval quality directly.
+
+---
+
+# Concurrency
+
+- `generation.concurrency` (env override `GENERATION_CONCURRENCY`) defaults to **1**, which reproduces strictly sequential drafting. Raising it does **not** speed up a TPM-capped tier: 8000 TPM against a ~72k-token 10-page run is a ~9-minute floor at any concurrency, and two large sections at once earns a 413 rather than a retryable 429.
+- Keep each section's retrieve → draft → persist chain together as one unit under the semaphore. Splitting it into phase-wide barriers (all retrievals, then all drafts) breaks the guarantee that a disconnect mid-stream leaves completed sections persisted.
+- Rate-limit handling belongs in `generation/rate_limit.py`, and the `TokenGovernor` there is a **module-level singleton on purpose** — Groq's TPM cap is account-wide, so a per-run governor would let two simultaneous generations each believe it owned the whole budget. Drafting calls pass `max_retries=0` to the SDK so there is exactly one retry layer.
+- Don't reach for LangGraph's `Send` API to parallelize sections. It has no concurrency cap, so bounding it means batched supersteps with barriers between them, plus state reducers and graph-level retry policy. See `system-workflow`'s `proposal-generation-flow.md` §2.
 
 ---
 
@@ -78,6 +101,14 @@ Verify
 ✓ `query_fields` match real `RequirementsSchema` field names
 
 ✓ Drafting prompt still emits body-only content (no duplicate headings)
+
+✓ Any new streamed-section path validates its `StreamOutcome` before persisting — an empty or truncated section must never reach the table
+
+✓ Token caps come from `generation/token_budget.py`, and `reasoning_effort` is set wherever `max_completion_tokens` is
+
+✓ `section_chunk` still carries `name`; SSE event names unchanged
+
+✓ `pytest test/test_generation_pipeline.py` passes — it pins the empty/truncated-section regressions and the concurrency cap
 
 ✓ Retrieval keeps the `has_any_knowledge_chunks` short-circuit
 

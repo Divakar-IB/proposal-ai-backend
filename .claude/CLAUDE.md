@@ -35,8 +35,12 @@ embedding/         HF Inference embedding client
 vectorstore/       Pinecone client, index management, similarity queries
 llm/               Groq chat-completions client (GroqChatClient)
 requirements_parsing/  LLM-driven structured requirement extraction + summary
-generation/        LangGraph proposal-generation pipeline: graph.py (nodes/graph), state.py, sections.py,
-                    nodes.py (retrieve/draft/quality-check helpers), prompts.py (mostly dead, see below)
+generation/        LangGraph proposal-generation pipeline: graph.py (load_context -> draft_sections ->
+                    compile_proposal), section_runner.py (one section's retrieve/draft/persist chain,
+                    run under a semaphore), token_budget.py (per-request token sizing + TPM clamp),
+                    rate_limit.py (account-wide TokenGovernor + Retry-After retry), state.py,
+                    sections.py, length_budget.py (word targets),
+                    nodes.py (retrieve/draft/validate/quality-check helpers)
 services/          Cross-cutting business logic (proposal_review_service, proposal_export_service,
                     proposal_knowledge_service, citation_service, proposal_naming_service,
                     proposal_wizard_service)
